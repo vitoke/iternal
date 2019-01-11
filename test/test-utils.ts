@@ -5,3 +5,5 @@ export const less3 = (v: number) => v < 3
 export const isNegative = (v: number) => v < 0
 export const isPositive = (v: number) => v >= 0
 export const sum = (a: number, b: number) => a + b
+export const double = (v: any) => [v, v]
+export const remove = (v: any) => []

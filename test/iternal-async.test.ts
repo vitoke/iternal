@@ -1,9 +1,10 @@
-import { addIndex, isEven, isOdd, isPositive, less3, sum } from './test-utils'
-import { Iter, AsyncIter, Fold } from '../src/lib/public/iternal'
-import { Option } from 'better-option'
+import { AsyncIter, Folds, Iter } from '../src/lib/public/iternal'
+import { addIndex, double, isEven, isOdd, less3, remove, sum } from './test-utils'
 
-const expectAsyncIter = <T>(iter: AsyncIter<T>) => async (arr: T[]) =>
-  expect(await iter.fold(Fold.toArray())).toEqual(arr)
+const expectAsyncIter = <T>(iter: AsyncIter<T>) => async (resultIt: Iterable<T>) =>
+  expect(await iter.fold(Folds.toArray())).toEqual(
+    await AsyncIter.fromIterable(resultIt).fold(Folds.toArray())
+  )
 
 const expectAsyncToThrow = async (f: () => void) => {
   let succeeded = false
@@ -28,13 +29,25 @@ describe('AsyncIter', () => {
     yield 3
   })
   const iterInf = AsyncIter.fromIterator<number>(async function*() {
-    yield* Iter.nats()
+    yield* Iter.nats
   })
 
   test('simple', async () => {
     await expectAsyncIter(iter0)([])
     await expectAsyncIter(iter1)([1])
     await expectAsyncIter(iter3)([1, 2, 3])
+  })
+
+  test('creation', async () => {
+    await expectAsyncIter(AsyncIter.of(1, 2, 3))([1, 2, 3])
+    await expectAsyncIter(
+      AsyncIter.generate(Promise.resolve(0), v => Promise.resolve(v + 1)).take(5)
+    )([0, 1, 2, 3, 4])
+    await expectAsyncIter(AsyncIter.unfold(Promise.resolve(0), async v => [v * 2, v + 1]).take(3))([
+      0,
+      2,
+      4
+    ])
   })
 
   test('forEach', async () => {
@@ -71,6 +84,38 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iterInf.filterNot(isEven).take(3))([1, 3, 5])
   })
 
+  test('filterWithLast', async () => {
+    let currentValues: any[] = []
+    let lastValues: any[] = []
+    let pushValues = (result: boolean) => (c: any, l: any) => {
+      currentValues.push(c)
+      lastValues.push(l)
+      return result
+    }
+    let exp = (cvs: any[], lvs: any[]) => {
+      expect(currentValues).toEqual(cvs)
+      expect(lastValues).toEqual(lvs)
+    }
+    await expectAsyncIter(iter0.filterWithPrevious(pushValues(true)))([])
+    exp([], [])
+
+    await expectAsyncIter(iter1.filterWithPrevious(pushValues(true)))([1])
+    exp([1], [undefined])
+    await expectAsyncIter(iter1.filterWithPrevious(pushValues(false)))([])
+
+    currentValues = []
+    lastValues = []
+    await expectAsyncIter(iter3.filterWithPrevious(pushValues(true)))([1, 2, 3])
+    exp([1, 2, 3], [undefined, 1, 2])
+  })
+
+  test('filterChanged', async () => {
+    await expectAsyncIter(iter0.filterChanged())([])
+    await expectAsyncIter(iter1.filterChanged())([1])
+    await expectAsyncIter(iter3.filterChanged())([1, 2, 3])
+    await expectAsyncIter(AsyncIter.of(1, 2, 2, 3, 3, 1, 3, 3, 3).filterChanged())([1, 2, 3, 1, 3])
+  })
+
   test('flatMap', async () => {
     const toIter = (v: any) => AsyncIter.of(v, v)
 
@@ -81,7 +126,7 @@ describe('AsyncIter', () => {
   })
 
   test('collect', async () => {
-    const evenToString = (v: number) => (isEven(v) ? '' + v : Option.none)
+    const evenToString = (v: number) => (isEven(v) ? '' + v : undefined)
 
     await expectAsyncIter(iter0.collect(evenToString))([])
     await expectAsyncIter(iter1.collect(evenToString))([])
@@ -112,37 +157,6 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iter0.prepend(1, 2))([1, 2])
     await expectAsyncIter(iter3.prepend(1, 2))([1, 2, 1, 2, 3])
     await expectAsyncIter(iterInf.prepend(1, 2).take(3))([1, 2, 0])
-  })
-
-  test('firstOrThrow', async () => {
-    await expectAsyncToThrow(() => iter0.foldOrThrow(Fold.findOpt()))
-    expect(await iter1.foldOrThrow(Fold.findOpt())).toBe(1)
-  })
-
-  test('firstOrValue', async () => {
-    expect(await iter0.foldOr(undefined, Fold.findOpt())).toBe(undefined)
-    expect(await iter1.foldOr('a', Fold.findOpt())).toBe(1)
-  })
-
-  test('hasValue', async () => {
-    expect(await iter0.fold(Fold.hasValue)).toBe(false)
-    expect(await iter1.fold(Fold.hasValue)).toBe(true)
-    expect(await iter3.fold(Fold.hasValue)).toBe(true)
-    expect(await iterInf.fold(Fold.hasValue)).toBe(true)
-  })
-
-  test('noValue', async () => {
-    expect(await iter0.fold(Fold.noValue)).toBe(true)
-    expect(await iter1.fold(Fold.noValue)).toBe(false)
-    expect(await iter3.fold(Fold.noValue)).toBe(false)
-    expect(await iterInf.fold(Fold.noValue)).toBe(false)
-  })
-
-  test('count', async () => {
-    expect(await iter0.fold(Fold.count)).toBe(0)
-    expect(await iter1.fold(Fold.count)).toBe(1)
-    expect(await iter3.fold(Fold.count)).toBe(3)
-    expect(await iterInf.take(100).fold(Fold.count)).toBe(100)
   })
 
   test('drop', async () => {
@@ -176,6 +190,13 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iterInf.slice(100, 3))([100, 101, 102])
   })
 
+  test('indicesOf', async () => {
+    await expectAsyncIter(iter0.indicesOf(0))([])
+    await expectAsyncIter(AsyncIter.fromIterable('a').indicesOf('a'))([0])
+    await expectAsyncIter(AsyncIter.fromIterable('a').indicesOf('b'))([])
+    await expectAsyncIter(AsyncIter.fromIterable('babbaab').indicesOf('a'))([1, 4, 5])
+  })
+
   test('takeWhile', async () => {
     await expectAsyncIter(iter0.takeWhile(less3))([])
     await expectAsyncIter(iter1.takeWhile(less3))([1])
@@ -190,79 +211,13 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iterInf.dropWhile(less3).take(3))([3, 4, 5])
   })
 
-  test('findOrThrow', async () => {
-    await expectAsyncToThrow(() => iter0.foldOrThrow(Fold.findOpt(isEven)))
-    await expectAsyncToThrow(() => iter1.foldOrThrow(Fold.findOpt(isEven)))
-    expect(await iter1.foldOrThrow(Fold.findOpt(isOdd))).toBe(1)
-    expect(await iter3.foldOrThrow(Fold.findOpt(isEven))).toBe(2)
-    expect(await iterInf.foldOrThrow(Fold.findOpt(isOdd))).toBe(1)
-  })
-
-  test('some', async () => {
-    expect(await iter0.fold(Fold.some(isEven))).toBe(false)
-    expect(await iter1.fold(Fold.some(isEven))).toBe(false)
-    expect(await iter1.fold(Fold.some(isOdd))).toBe(true)
-    expect(await iter3.fold(Fold.some(isOdd))).toBe(true)
-    expect(await iterInf.fold(Fold.some(isOdd))).toBe(true)
-  })
-
-  test('every', async () => {
-    expect(await iter0.fold(Fold.every(isEven))).toBe(true)
-    expect(await iter1.fold(Fold.every(isEven))).toBe(false)
-    expect(await iter1.fold(Fold.every(isOdd))).toBe(true)
-    expect(await iter3.fold(Fold.every(isOdd))).toBe(false)
-    expect(await iter3.fold(Fold.every(isOdd))).toBe(false)
-    expect(await iter3.fold(Fold.every(isPositive))).toBe(true)
-    expect(await iterInf.fold(Fold.every(isOdd))).toBe(false)
-    expect(await iterInf.take(1000).fold(Fold.every(isPositive))).toBe(true)
-  })
-
-  test('contains', async () => {
-    expect(await iter0.fold(Fold.contains(1))).toBe(false)
-    expect(await iter1.fold(Fold.contains(1))).toBe(true)
-    expect(await iter1.fold(Fold.contains(0))).toBe(false)
-    expect(await iter3.fold(Fold.contains(2))).toBe(true)
-    expect(await iter3.fold(Fold.contains(5))).toBe(false)
-    expect(await iterInf.fold(Fold.contains(1000))).toBe(true)
-    expect(await iterInf.take(1000).fold(Fold.contains(-1))).toBe(false)
-  })
-
-  test('fold', async () => {
-    expect(await iter0.fold(Fold.sum)).toBe(0)
-    expect(await iter1.fold(Fold.sum)).toBe(1)
-    expect(await iter3.fold(Fold.sum)).toBe(6)
-    expect(await iterInf.take(1000).fold(Fold.sum)).toBe(499500)
-  })
-
-  test('reduceOpt', async () => {
-    expect(await iter0.reduceOpt(sum)).toBe(Option.none)
-    expect(await iter1.reduceOpt(sum)).toBe(1)
-    expect(await iter3.reduceOpt(sum)).toBe(6)
-    expect(await iterInf.take(1000).reduceOpt(sum)).toBe(499500)
-  })
-
-  test('reduceOrValue', async () => {
-    expect(await iter0.reduceOrValue(sum, undefined)).toBe(undefined)
-    expect(await iter0.reduceOrValue(sum, 'a')).toBe('a')
-    expect(await iter1.reduceOrValue(sum, undefined)).toBe(1)
-    expect(await iter3.reduceOrValue(sum, undefined)).toBe(6)
-    expect(await iterInf.take(1000).reduceOrValue(sum, undefined)).toBe(499500)
-  })
-
-  test('foldIter', async () => {
-    await expectAsyncIter(iter0.foldIter(Fold.sum))([])
-    await expectAsyncIter(iter1.foldIter(Fold.sum))([1])
-    await expectAsyncIter(iter3.foldIter(Fold.sum))([1, 3, 6])
-    await expectAsyncIter(iterInf.foldIter(Fold.sum).take(4))([0, 1, 3, 6])
-  })
-
-  test('groupBy', async () => {
-    expect(await iter0.fold(Fold.groupBy(isEven))).toEqual(new Map())
-    expect(await iter1.fold(Fold.groupBy(isEven))).toEqual(new Map([[false, [1]]]))
-    expect(await iter3.fold(Fold.groupBy(isEven))).toEqual(new Map([[false, [1, 3]], [true, [2]]]))
-    expect(await iterInf.take(3).fold(Fold.groupBy(v => v))).toEqual(
-      new Map([[0, [0]], [1, [1]], [2, [2]]])
-    )
+  test('reduce', async () => {
+    expectAsyncToThrow(() => iter0.reduce(sum))
+    expect(await iter0.reduce(sum, 0)).toBe(0)
+    expect(await iter0.reduce(sum, () => 0)).toBe(0)
+    expect(await iter1.reduce(sum)).toBe(1)
+    expect(await iter3.reduce(sum)).toBe(6)
+    expect(await iterInf.take(1000).reduce(sum)).toBe(499500)
   })
 
   test('zipWith', async () => {
@@ -317,6 +272,37 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iterInf.interleave(iterInf, iterInf).take(6))([0, 0, 0, 1, 1, 1])
   })
 
+  test('interleaveAll', async () => {
+    await expectAsyncIter(iter0.interleaveAll(iter0))([])
+    await expectAsyncIter(iter0.interleaveAll(iter1))([1])
+    await expectAsyncIter(iter0.interleaveAll(iter3))([1, 2, 3])
+    await expectAsyncIter(iter1.interleaveAll(iter0))([1])
+    await expectAsyncIter(iter1.interleaveAll(iter1))([1, 1])
+    await expectAsyncIter(iter1.interleaveAll(iter3))([1, 1, 2, 3])
+    await expectAsyncIter(iter3.interleaveAll(iter0))([1, 2, 3])
+    await expectAsyncIter(iter3.interleaveAll(iter1))([1, 1, 2, 3])
+    await expectAsyncIter(iter3.interleaveAll(iter3))([1, 1, 2, 2, 3, 3])
+    await expectAsyncIter(iter3.interleaveAll(Iter.range(10, 15), Iter.of(100)))([
+      1,
+      10,
+      100,
+      2,
+      11,
+      3,
+      12,
+      13,
+      14
+    ])
+  })
+
+  test('interleaveRound', async () => {
+    await expectAsyncIter(iter0.interleaveRound(iter0))([])
+    await expectAsyncIter(iter0.interleaveRound(iter1))([])
+    await expectAsyncIter(iter1.interleaveRound(iter0))([])
+    await expectAsyncIter(iter1.interleaveRound(Iter.of(2)).take(5))([1, 2, 1, 2, 1])
+    await expectAsyncIter(iter1.interleaveRound(iter3).take(8))([1, 1, 1, 2, 1, 3, 1, 1])
+  })
+
   test('repeat', async () => {
     await expectAsyncIter(iter0.repeat())([])
     await expectAsyncIter(iter1.repeat().take(3))([1, 1, 1])
@@ -324,46 +310,6 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iter3.repeat().take(4))([1, 2, 3, 1])
     await expectAsyncIter(iter3.repeat(2))([1, 2, 3, 1, 2, 3])
     await expectAsyncIter(iterInf.repeat().take(4))([0, 1, 2, 3])
-  })
-
-  test('sum', async () => {
-    expect(await iter0.fold(Fold.sum)).toBe(0)
-    expect(await iter1.fold(Fold.sum)).toBe(1)
-    expect(await iter3.fold(Fold.sum)).toBe(6)
-    expect(await iterInf.take(3).fold(Fold.sum)).toBe(3)
-    expect(await iterInf.take(1000).fold(Fold.sum)).toBe(499500)
-  })
-
-  test('product', async () => {
-    expect(await iter0.fold(Fold.product)).toBe(1)
-    expect(await iter1.fold(Fold.product)).toBe(1)
-    expect(await iter3.fold(Fold.product)).toBe(6)
-    expect(
-      await iterInf
-        .map(v => v + 1)
-        .take(3)
-        .fold(Fold.product)
-    ).toBe(6)
-    expect(
-      await iterInf
-        .map(v => v + 1)
-        .take(10)
-        .fold(Fold.product)
-    ).toBe(3628800)
-  })
-
-  test('average', async () => {
-    expect(await iter0.fold(Fold.average())).toBe(0.0)
-    expect(await iter1.fold(Fold.average())).toBe(1.0)
-    expect(await iter3.fold(Fold.average())).toBe(2.0)
-    expect(await iterInf.take(101).fold(Fold.average())).toBe(50.0)
-  })
-
-  test('averageScan', async () => {
-    await expectAsyncIter(iter0.foldIter(Fold.average()))([])
-    await expectAsyncIter(iter1.foldIter(Fold.average()))([1.0])
-    await expectAsyncIter(iter3.foldIter(Fold.average()))([1.0, 1.5, 2])
-    await expectAsyncIter(iterInf.take(3).foldIter(Fold.average()))([0.0, 0.5, 1.0])
   })
 
   test('join', async () => {
@@ -402,47 +348,96 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iterInf.sample(1000).take(3))([0, 1000, 2000])
   })
 
-  test('span', async () => {
-    expect(await iter0.fold(Fold.partition(isEven))).toEqual([[], []])
-    expect(await iter1.fold(Fold.partition(isEven))).toEqual([[], [1]])
-    expect(await iter3.fold(Fold.partition(isEven))).toEqual([[2], [1, 3]])
-  })
-
   test('monitor', async () => {
     let values: number[] = []
     const pushValue = (v: number) => values.push(v)
 
-    await iter0.monitor(pushValue).forEach()
+    await iter0.monitor('', pushValue).forEach()
     expect(values).toEqual([])
 
-    await iter1.monitor(pushValue).forEach()
+    await iter1.monitor('', pushValue).forEach()
     expect(values).toEqual([1])
 
     values = []
-    await iter3.monitor(pushValue).forEach()
+    await iter3.monitor('', pushValue).forEach()
     expect(values).toEqual([1, 2, 3])
+
+    values = []
+    await iter3.monitor('', pushValue).forEach()
+    expect(values).toEqual([1, 1, 2, 2, 3, 3])
   })
 
-  test('substituteWhere', async () => {
-    const double = (v: any) => AsyncIter.fromIterable([v, v])
-    const remove = <T>(v: T) => AsyncIter.empty
-
-    await expectAsyncIter(iter0.substituteWhere(isEven, double))([])
-    await expectAsyncIter(iter1.substituteWhere(isEven, double))([1])
-    await expectAsyncIter(iter1.substituteWhere(isOdd, double))([1, 1])
-    await expectAsyncIter(iter1.substituteWhere(isOdd, remove))([])
-    await expectAsyncIter(iter3.substituteWhere(isEven, double))([1, 2, 2, 3])
-    await expectAsyncIter(iter3.substituteWhere(isEven, remove))([1, 3])
+  test('patchAt', async () => {
+    await expectAsyncIter(iter0.patchAt(0, 1))([])
+    await expectAsyncIter(iter0.patchAt(0, 0, () => iter1))([1])
+    await expectAsyncIter(iter0.patchAt(0, 10, () => iter1))([1])
+    await expectAsyncIter(iter0.patchAt(-10, 0, () => iter1))([1])
+    await expectAsyncIter(iter1.patchAt(-10, 0, () => Iter.of(2)))([2, 1])
+    await expectAsyncIter(iter1.patchAt(-10, 10, () => Iter.of(2)))([2])
+    await expectAsyncIter(iter1.patchAt(0, 0, () => Iter.of(2)))([2, 1])
+    await expectAsyncIter(iter1.patchAt(1, 0, () => Iter.of(2)))([1, 2])
+    await expectAsyncIter(iter1.patchAt(10, 10, () => Iter.of(2)))([1, 2])
+    await expectAsyncIter(iter1.patchAt(100, 0, () => Iter.of(2)))([1, 2])
+    await expectAsyncIter(iter3.patchAt(-10, 0, () => Iter.of(9)))([9, 1, 2, 3])
+    await expectAsyncIter(iter3.patchAt(0, 0, () => Iter.of(9)))([9, 1, 2, 3])
+    await expectAsyncIter(iter3.patchAt(1, 0, () => Iter.of(9)))([1, 9, 2, 3])
+    await expectAsyncIter(iter3.patchAt(100, 0, () => Iter.of(9)))([1, 2, 3, 9])
+    await expectAsyncIter(iter3.patchAt(0, 1, () => Iter.of(9)))([9, 2, 3])
+    await expectAsyncIter(iter3.patchAt(1, 1, () => Iter.of(9)))([1, 9, 3])
+    await expectAsyncIter(iter3.patchAt(100, 1, () => Iter.of(9)))([1, 2, 3, 9])
   })
 
-  test('substituteElem', async () => {
+  test('patchWhere', async () => {
+    await expectAsyncIter(iter0.patchWhere(isEven, 1, double))([])
+    await expectAsyncIter(iter1.patchWhere(isEven, 1, double))([1])
+    await expectAsyncIter(iter1.patchWhere(isOdd, 1, double))([1, 1])
+    await expectAsyncIter(iter1.patchWhere(isOdd, 1, remove))([])
+    await expectAsyncIter(iter3.patchWhere(isEven, 1, double))([1, 2, 2, 3])
+    await expectAsyncIter(iter3.patchWhere(isEven, 0, double))([1, 2, 2, 2, 3])
+    await expectAsyncIter(iter3.patchWhere(isEven, 1, remove))([1, 3])
+  })
+
+  test('patchElem', async () => {
     const subst = AsyncIter.of(-1, -2)
 
-    await expectAsyncIter(iter0.substituteElem(1, subst))([])
-    await expectAsyncIter(iter1.substituteElem(0, subst))([1])
-    await expectAsyncIter(iter1.substituteElem(1, subst))([-1, -2])
-    await expectAsyncIter(iter3.substituteElem(1, subst))([-1, -2, 2, 3])
-    await expectAsyncIter(iter3.substituteElem(2))([1, 3])
+    await expectAsyncIter(iter0.patchElem(1, 1, subst))([])
+    await expectAsyncIter(iter1.patchElem(0, 1, subst))([1])
+    await expectAsyncIter(iter1.patchElem(1, 1, subst))([-1, -2])
+    await expectAsyncIter(iter3.patchElem(1, 1, subst))([-1, -2, 2, 3])
+    await expectAsyncIter(iter3.patchElem(2, 1))([1, 3])
+  })
+
+  test('patchWhere amount', async () => {
+    await expectAsyncIter(iter0.patchWhere(isEven, 1, () => Iter.of(10), 1))([])
+    await expectAsyncIter(iter1.patchWhere(isEven, 0, () => Iter.of(10), 1))([1])
+    await expectAsyncIter(iter1.patchWhere(isOdd, 0, () => Iter.of(10), 1))([10, 1])
+    await expectAsyncIter(iter1.patchWhere(isOdd, 1, () => Iter.of(10), 1))([10])
+    await expectAsyncIter(
+      AsyncIter.fromIterable(Iter.range(0, 5)).patchWhere(isOdd, 1, () => Iter.of(10), 1)
+    )([0, 10, 2, 3, 4])
+    await expectAsyncIter(
+      AsyncIter.fromIterable(Iter.range(0, 5)).patchWhere(isOdd, 0, () => Iter.of(10), 1)
+    )([0, 10, 1, 2, 3, 4])
+    await expectAsyncIter(
+      AsyncIter.fromIterable(Iter.range(0, 6)).patchWhere(isOdd, 1, () => Iter.of(10), 2)
+    )([0, 10, 2, 10, 4, 5])
+    await expectAsyncIter(
+      AsyncIter.fromIterable(Iter.range(0, 6)).patchWhere(isOdd, 1, undefined, 2)
+    )([0, 2, 4, 5])
+  })
+
+  test('patchElem amount', async () => {
+    await expectAsyncIter(AsyncIter.fromIterable('').patchElem('a', 0, 'ab', 1))('')
+    await expectAsyncIter(AsyncIter.fromIterable('a').patchElem('a', 0, 'XX', 1))('XXa')
+    await expectAsyncIter(AsyncIter.fromIterable('a').patchElem('a', 1, 'XX', 1))('XX')
+    await expectAsyncIter(AsyncIter.fromIterable('b').patchElem('a', 0, 'XX', 1))('b')
+    await expectAsyncIter(AsyncIter.fromIterable('bac').patchElem('a', 0, 'XX', 1))('bXXac')
+    await expectAsyncIter(AsyncIter.fromIterable('bacadata').patchElem('a', 0, 'XX', 2))(
+      'bXXacXXadata'
+    )
+    await expectAsyncIter(AsyncIter.fromIterable('bacadata').patchElem('a', 1, 'XX', 2))(
+      'bXXcXXdata'
+    )
   })
 
   test('splitWhere', async () => {
@@ -469,11 +464,17 @@ describe('AsyncIter', () => {
   })
 
   test('intersperse', async () => {
-    await expectAsyncIter(iter0.intersperse(AsyncIter.of(-1)))([])
-    await expectAsyncIter(iter1.intersperse(AsyncIter.of(-1)))([1])
-    await expectAsyncIter(iter3.intersperse(AsyncIter.of(-1)))([1, -1, 2, -1, 3])
-    await expectAsyncIter(iter3.intersperse(AsyncIter.of(-1, -2)))([1, -1, -2, 2, -1, -2, 3])
+    await expectAsyncIter(iter0.intersperse(Iter.of(-1)))([])
+    await expectAsyncIter(iter1.intersperse(Iter.of(-1)))([1])
+    await expectAsyncIter(iter3.intersperse(Iter.of(-1)))([1, -1, 2, -1, 3])
     await expectAsyncIter(iter3.intersperse(Iter.of(-1, -2)))([1, -1, -2, 2, -1, -2, 3])
+    await expectAsyncIter(AsyncIter.fromIterable('ABC').intersperse(Iter.of('ab')))([
+      'A',
+      'ab',
+      'B',
+      'ab',
+      'C'
+    ])
   })
 
   test('mkGroup', async () => {
@@ -501,25 +502,5 @@ describe('AsyncIter', () => {
     expect(await iter0.join()).toEqual('')
     expect(await iter1.join()).toEqual('1')
     expect(await iter3.join()).toEqual('123')
-  })
-
-  test('toArray', async () => {
-    expect(await iter0.fold(Fold.toArray())).toEqual([])
-    expect(await iter1.fold(Fold.toArray())).toEqual([1])
-    expect(await iter3.fold(Fold.toArray())).toEqual([1, 2, 3])
-  })
-
-  test('toSet', async () => {
-    expect(await iter0.fold(Fold.toSet())).toEqual(new Set())
-    expect(await iter1.fold(Fold.toSet())).toEqual(new Set([1]))
-    expect(await iter3.fold(Fold.toSet())).toEqual(new Set([1, 2, 3]))
-  })
-
-  test('toMap', async () => {
-    const double = <T>(v: T): [T, T] => [v, v]
-
-    expect(await iter0.map(double).fold(Fold.toMap())).toEqual(new Map())
-    expect(await iter1.map(double).fold(Fold.toMap())).toEqual(new Map([[1, 1]]))
-    expect(await iter3.map(double).fold(Fold.toMap())).toEqual(new Map([[1, 1], [2, 2], [3, 3]]))
   })
 })

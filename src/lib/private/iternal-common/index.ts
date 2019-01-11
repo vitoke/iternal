@@ -1,8 +1,8 @@
+import { AnyIterable, AnyIterator, Pred } from '../../public/iternal'
 import { Type } from '../util'
-import { AnyIterable, AnyIterator } from '../../public/iternal'
 
-export const _NO_VALUE: unique symbol = Symbol('NO_VALUE')
-export type NoValue = typeof _NO_VALUE
+export const NoValue: unique symbol = Symbol('NO_VALUE')
+export type NoValue = typeof NoValue
 
 export const getIterator = <T>(iterable: Iterable<T>): Iterator<T> => iterable[Symbol.iterator]()
 
@@ -28,14 +28,16 @@ export const randomInt = (min = Number.MIN_SAFE_INTEGER, max = Number.MAX_SAFE_I
   return Math.floor(r * (max - min)) + min
 }
 
-export const checkPureIterable = (it: any) => {
+export const checkPureIterable = <E>(it: Iterable<E>): Iterable<E> => {
   if (!Type.isIterable(it)) throw new Error('not iterable')
   if (Type.isIterator(it)) throw new Error('should not have iterator methods')
+  return it
 }
 
 export const checkPureAsyncIterable = (it: any) => {
   if (!Type.isAsyncIterable(it)) throw new Error('not async iterable')
   if (Type.isIterator(it)) throw new Error('should not have iterator methods')
+  return it
 }
 
 export const checkPureAnyIterable = (it: any) => {
@@ -43,4 +45,8 @@ export const checkPureAnyIterable = (it: any) => {
     throw new Error('not iterable or async iterable')
   }
   if (Type.isIterator(it)) throw new Error('should not have iterator methods')
+  return it
 }
+
+export const optPred = <E>(value: E, index: number, pred?: Pred<E>): boolean =>
+  pred !== undefined && pred(value, index)

@@ -1,14 +1,14 @@
-import { addIndex, isEven, isOdd, isPositive, less3, sum } from './test-utils'
-import { Iter, Fold } from '../src/lib/public/iternal'
-import { Option } from 'better-option'
+import { Iter } from '../src/lib/public/iternal'
+import { addIndex, double, isEven, isOdd, less3, remove, sum } from './test-utils'
 
-const expectIter = <T>(iter: Iter<T>) => (arr: T[]) => expect(iter.toArray()).toEqual(arr)
+const expectIter = <T>(iter: Iter<T>) => (resIt: Iterable<T>) =>
+  expect(iter.toArray()).toEqual([...resIt])
 
 describe('Iter', () => {
   const iter0 = Iter.empty
   const iter1 = Iter.of(1)
   const iter3 = Iter.of(1, 2, 3)
-  const iterInf = Iter.nats()
+  const iterInf = Iter.nats
 
   test('simple', () => {
     expectIter(iter0)([])
@@ -25,14 +25,14 @@ describe('Iter', () => {
     expectIter(Iter.objectEntries({ a: 1, b: 2 }))([['a', 1], ['b', 2]])
     expectIter(Iter.objectKeys({ a: 1, b: 2 }))(['a', 'b'])
     expectIter(Iter.objectValues({ a: 1, b: 2 }))([1, 2])
-    expectIter(Iter.sequence(0, v => v + 1).take(5))([0, 1, 2, 3, 4])
+    expectIter(Iter.generate(0, v => v + 1).take(5))([0, 1, 2, 3, 4])
     expectIter(Iter.unfold(0, v => [v * 2, v + 1]).take(3))([0, 2, 4])
     expectIter(Iter.fromLazy(() => 1))([1])
-    expectIter(Iter.nats().take(3))([0, 1, 2])
+    expectIter(Iter.nats.take(3))([0, 1, 2])
     expectIter(Iter.range(0, 6, 2))([0, 2, 4])
     expectIter(Iter.range(6, 0, -2))([6, 4, 2])
     expectIter(Iter.range(0.0, 0.5, 0.2))([0.0, 0.2, 0.4])
-    const [s1, s2] = Iter.symbols()
+    const [s1, s2] = Iter.symbols
     expect(s1).not.toEqual(s2)
     expectIter(Iter.indexedReversed('abc'))(['c', 'b', 'a'])
     expectIter(Iter.indexedReversed([1, 2, 3]))([3, 2, 1])
@@ -74,6 +74,38 @@ describe('Iter', () => {
     expectIter(iterInf.filterNot(isEven).take(3))([1, 3, 5])
   })
 
+  test('filterWithLast', () => {
+    let currentValues: any[] = []
+    let lastValues: any[] = []
+    let pushValues = (result: boolean) => (c: any, l: any) => {
+      currentValues.push(c)
+      lastValues.push(l)
+      return result
+    }
+    let exp = (cvs: any[], lvs: any[]) => {
+      expect(currentValues).toEqual(cvs)
+      expect(lastValues).toEqual(lvs)
+    }
+    expectIter(iter0.filterWithPrevious(pushValues(true)))([])
+    exp([], [])
+
+    expectIter(iter1.filterWithPrevious(pushValues(true)))([1])
+    exp([1], [undefined])
+    expectIter(iter1.filterWithPrevious(pushValues(false)))([])
+
+    currentValues = []
+    lastValues = []
+    expectIter(iter3.filterWithPrevious(pushValues(true)))([1, 2, 3])
+    exp([1, 2, 3], [undefined, 1, 2])
+  })
+
+  test('filterChanged', () => {
+    expectIter(iter0.filterChanged())([])
+    expectIter(iter1.filterChanged())([1])
+    expectIter(iter3.filterChanged())([1, 2, 3])
+    expectIter(Iter.of(1, 2, 2, 3, 3, 1, 3, 3, 3).filterChanged())([1, 2, 3, 1, 3])
+  })
+
   test('flatMap', () => {
     const toIter = (v: any) => Iter.of(v, v)
 
@@ -84,7 +116,7 @@ describe('Iter', () => {
   })
 
   test('collect', () => {
-    const evenToString = (v: number) => (isEven(v) ? '' + v : Option.none)
+    const evenToString = (v: number) => (isEven(v) ? '' + v : undefined)
 
     expectIter(iter0.collect(evenToString))([])
     expectIter(iter1.collect(evenToString))([])
@@ -115,42 +147,6 @@ describe('Iter', () => {
     expectIter(iter0.prepend(1, 2))([1, 2])
     expectIter(iter3.prepend(1, 2))([1, 2, 1, 2, 3])
     expectIter(iterInf.prepend(1, 2).take(3))([1, 2, 0])
-  })
-
-  test('firstOpt', () => {
-    expect(iter0.fold(Fold.findOpt())).toBe(Option.none)
-    expect(iter1.fold(Fold.findOpt())).toBe(1)
-    expect(iter3.fold(Fold.findOpt())).toBe(1)
-    expect(iterInf.fold(Fold.findOpt())).toBe(0)
-  })
-
-  test('firstOrValue', () => {
-    expect(iter0.foldOr(undefined, Fold.findOpt())).toBe(undefined)
-    expect(iter0.foldOr('a', Fold.findOpt())).toBe('a')
-    expect(iter1.foldOr('a', Fold.findOpt())).toBe(1)
-    expect(iter3.foldOr('a', Fold.findOpt())).toBe(1)
-    expect(iterInf.foldOr('a', Fold.findOpt())).toBe(0)
-  })
-
-  test('hasValue', () => {
-    expect(iter0.fold(Fold.hasValue)).toBe(false)
-    expect(iter1.fold(Fold.hasValue)).toBe(true)
-    expect(iter3.fold(Fold.hasValue)).toBe(true)
-    expect(iterInf.fold(Fold.hasValue)).toBe(true)
-  })
-
-  test('noValue', () => {
-    expect(iter0.fold(Fold.noValue)).toBe(true)
-    expect(iter1.fold(Fold.noValue)).toBe(false)
-    expect(iter3.fold(Fold.noValue)).toBe(false)
-    expect(iterInf.fold(Fold.noValue)).toBe(false)
-  })
-
-  test('count', () => {
-    expect(iter0.fold(Fold.count)).toBe(0)
-    expect(iter1.fold(Fold.count)).toBe(1)
-    expect(iter3.fold(Fold.count)).toBe(3)
-    expect(iterInf.take(100).fold(Fold.count)).toBe(100)
   })
 
   test('drop', () => {
@@ -184,6 +180,13 @@ describe('Iter', () => {
     expectIter(iterInf.slice(100, 3))([100, 101, 102])
   })
 
+  test('indicesOf', () => {
+    expectIter(iter0.indicesOf(0))([])
+    expectIter(Iter.fromIterable('a').indicesOf('a'))([0])
+    expectIter(Iter.fromIterable('a').indicesOf('b'))([])
+    expectIter(Iter.fromIterable('babbaab').indicesOf('a'))([1, 4, 5])
+  })
+
   test('takeWhile', () => {
     expectIter(iter0.takeWhile(less3))([])
     expectIter(iter1.takeWhile(less3))([1])
@@ -198,88 +201,13 @@ describe('Iter', () => {
     expectIter(iterInf.dropWhile(less3).take(3))([3, 4, 5])
   })
 
-  test('findOpt', () => {
-    expect(iter0.fold(Fold.findOpt(isEven))).toBe(Option.none)
-    expect(iter1.fold(Fold.findOpt(isEven))).toBe(Option.none)
-    expect(iter1.fold(Fold.findOpt(isOdd))).toBe(1)
-    expect(iter3.fold(Fold.findOpt(isEven))).toBe(2)
-    expect(iterInf.fold(Fold.findOpt(isOdd))).toBe(1)
-  })
-
-  test('findOrValue', () => {
-    expect(iter0.foldOr(undefined, Fold.findOpt(isEven))).toBe(undefined)
-    expect(iter0.foldOr('a', Fold.findOpt(isEven))).toBe('a')
-    expect(iter1.foldOr('a', Fold.findOpt(isEven))).toBe('a')
-    expect(iter1.foldOr('a', Fold.findOpt(isOdd))).toBe(1)
-    expect(iter3.foldOr('a', Fold.findOpt(isEven))).toBe(2)
-    expect(iterInf.foldOr('a', Fold.findOpt(isOdd))).toBe(1)
-  })
-
-  test('some', () => {
-    expect(iter0.fold(Fold.some(isEven))).toBe(false)
-    expect(iter1.fold(Fold.some(isEven))).toBe(false)
-    expect(iter1.fold(Fold.some(isOdd))).toBe(true)
-    expect(iter3.fold(Fold.some(isOdd))).toBe(true)
-    expect(iterInf.fold(Fold.some(isOdd))).toBe(true)
-  })
-
-  test('every', () => {
-    expect(iter0.fold(Fold.every(isEven))).toBe(true)
-    expect(iter1.fold(Fold.every(isEven))).toBe(false)
-    expect(iter1.fold(Fold.every(isOdd))).toBe(true)
-    expect(iter3.fold(Fold.every(isOdd))).toBe(false)
-    expect(iter3.fold(Fold.every(isOdd))).toBe(false)
-    expect(iter3.fold(Fold.every(isPositive))).toBe(true)
-    expect(iterInf.fold(Fold.every(isOdd))).toBe(false)
-    expect(iterInf.take(1000).fold(Fold.every(isPositive))).toBe(true)
-  })
-
-  test('contains', () => {
-    expect(iter0.fold(Fold.contains(1))).toBe(false)
-    expect(iter1.fold(Fold.contains(1))).toBe(true)
-    expect(iter1.fold(Fold.contains(0))).toBe(false)
-    expect(iter3.fold(Fold.contains(2))).toBe(true)
-    expect(iter3.fold(Fold.contains(5))).toBe(false)
-    expect(iterInf.fold(Fold.contains(1000))).toBe(true)
-    expect(iterInf.take(1000).fold(Fold.contains(-1))).toBe(false)
-  })
-
-  test('fold parallel', () => {
-    const sumProduct = Fold.parallel(Fold.sum, Fold.product)
-
-    expect(iter0.fold(sumProduct)).toEqual([0, 1])
-    expect(iter1.fold(sumProduct)).toEqual([1, 1])
-    expect(iter3.fold(sumProduct)).toEqual([6, 6])
-    expect(
-      iterInf
-        .drop(1)
-        .take(10)
-        .fold(sumProduct)
-    ).toEqual([55, 3628800])
-  })
-
-  test('reduceOpt', () => {
-    expect(iter0.reduceOpt(sum)).toBe(Option.none)
-    expect(iter0.reduceOpt(sum)).toBe(Option.none)
-    expect(iter1.reduceOpt(sum)).toBe(1)
-    expect(iter3.reduceOpt(sum)).toBe(6)
-    expect(iterInf.take(1000).reduceOpt(sum)).toBe(499500)
-  })
-
-  test('foldIter', () => {
-    expectIter(iter0.foldIter(Fold.sum))([])
-    expectIter(iter1.foldIter(Fold.sum))([1])
-    expectIter(iter3.foldIter(Fold.sum))([1, 3, 6])
-    expectIter(iterInf.foldIter(Fold.sum).take(4))([0, 1, 3, 6])
-  })
-
-  test('groupBy', () => {
-    expect(iter0.fold(Fold.groupBy(isEven))).toEqual(new Map())
-    expect(iter1.fold(Fold.groupBy(isEven))).toEqual(new Map([[false, [1]]]))
-    expect(iter3.fold(Fold.groupBy(isEven))).toEqual(new Map([[false, [1, 3]], [true, [2]]]))
-    expect(iterInf.take(3).fold(Fold.groupBy(v => v))).toEqual(
-      new Map([[0, [0]], [1, [1]], [2, [2]]])
-    )
+  test('reduce', () => {
+    expect(() => iter0.reduce(sum)).toThrow()
+    expect(iter0.reduce(sum, 0)).toBe(0)
+    expect(iter0.reduce(sum, () => 0)).toBe(0)
+    expect(iter1.reduce(sum)).toBe(1)
+    expect(iter3.reduce(sum)).toBe(6)
+    expect(iterInf.take(1000).reduce(sum)).toBe(499500)
   })
 
   test('zipWith', () => {
@@ -334,6 +262,37 @@ describe('Iter', () => {
     expectIter(iterInf.interleave(iterInf, iterInf).take(6))([0, 0, 0, 1, 1, 1])
   })
 
+  test('interleaveAll', () => {
+    expectIter(iter0.interleaveAll(iter0))([])
+    expectIter(iter0.interleaveAll(iter1))([1])
+    expectIter(iter0.interleaveAll(iter3))([1, 2, 3])
+    expectIter(iter1.interleaveAll(iter0))([1])
+    expectIter(iter1.interleaveAll(iter1))([1, 1])
+    expectIter(iter1.interleaveAll(iter3))([1, 1, 2, 3])
+    expectIter(iter3.interleaveAll(iter0))([1, 2, 3])
+    expectIter(iter3.interleaveAll(iter1))([1, 1, 2, 3])
+    expectIter(iter3.interleaveAll(iter3))([1, 1, 2, 2, 3, 3])
+    expectIter(iter3.interleaveAll(Iter.range(10, 15), Iter.of(100)))([
+      1,
+      10,
+      100,
+      2,
+      11,
+      3,
+      12,
+      13,
+      14
+    ])
+  })
+
+  test('interleaveRound', () => {
+    expectIter(iter0.interleaveRound(iter0))([])
+    expectIter(iter0.interleaveRound(iter1))([])
+    expectIter(iter1.interleaveRound(iter0))([])
+    expectIter(iter1.interleaveRound(Iter.of(2)).take(5))([1, 2, 1, 2, 1])
+    expectIter(iter1.interleaveRound(iter3).take(8))([1, 1, 1, 2, 1, 3, 1, 1])
+  })
+
   test('repeat', () => {
     expectIter(iter0.repeat())([])
     expectIter(iter1.repeat().take(3))([1, 1, 1])
@@ -341,60 +300,6 @@ describe('Iter', () => {
     expectIter(iter3.repeat().take(4))([1, 2, 3, 1])
     expectIter(iter3.repeat(2))([1, 2, 3, 1, 2, 3])
     expectIter(iterInf.repeat().take(4))([0, 1, 2, 3])
-  })
-
-  test('sum', () => {
-    expect(iter0.fold(Fold.sum)).toBe(0)
-    expect(iter1.fold(Fold.sum)).toBe(1)
-    expect(iter3.fold(Fold.sum)).toBe(6)
-    expect(iterInf.take(3).fold(Fold.sum)).toBe(3)
-    expect(iterInf.take(1000).fold(Fold.sum)).toBe(499500)
-  })
-
-  test('product', () => {
-    expect(iter0.fold(Fold.product)).toBe(1)
-    expect(iter1.fold(Fold.product)).toBe(1)
-    expect(iter3.fold(Fold.product)).toBe(6)
-    expect(
-      iterInf
-        .map(v => v + 1)
-        .take(3)
-        .fold(Fold.product)
-    ).toBe(6)
-    expect(
-      iterInf
-        .map(v => v + 1)
-        .take(10)
-        .fold(Fold.product)
-    ).toBe(3628800)
-  })
-
-  test('average', () => {
-    expect(iter0.fold(Fold.average())).toBe(0.0)
-    expect(iter1.fold(Fold.average())).toBe(1.0)
-    expect(iter3.fold(Fold.average())).toBe(2.0)
-    expect(iterInf.take(101).fold(Fold.average())).toBe(50.0)
-  })
-
-  test('average iter', () => {
-    expectIter(iter0.foldIter(Fold.average()))([])
-    expectIter(iter1.foldIter(Fold.average()))([1.0])
-    expectIter(iter3.foldIter(Fold.average()))([1.0, 1.5, 2])
-    expectIter(iterInf.take(3).foldIter(Fold.average()))([0.0, 0.5, 1.0])
-  })
-
-  test('maxOpt', () => {
-    expect(iter0.fold(Fold.maxOpt)).toBe(Option.none)
-    expect(iter1.fold(Fold.maxOpt)).toBe(1)
-    expect(iter3.fold(Fold.maxOpt)).toBe(3)
-    expect(iterInf.take(1000).fold(Fold.maxOpt)).toBe(999)
-  })
-
-  test('minOpt', () => {
-    expect(iter0.fold(Fold.minOpt)).toBe(Option.none)
-    expect(iter1.fold(Fold.minOpt)).toBe(1)
-    expect(iter3.fold(Fold.minOpt)).toBe(1)
-    expect(iterInf.take(1000).fold(Fold.minOpt)).toBe(0)
   })
 
   test('join', () => {
@@ -433,45 +338,82 @@ describe('Iter', () => {
     expectIter(iterInf.sample(1000).take(3))([0, 1000, 2000])
   })
 
-  test('span', () => {
-    expect(iter0.fold(Fold.partition(isEven))).toEqual([[], []])
-    expect(iter1.fold(Fold.partition(isEven))).toEqual([[], [1]])
-    expect(iter3.fold(Fold.partition(isEven))).toEqual([[2], [1, 3]])
-  })
-
   test('monitor', () => {
     let values: number[] = []
     const pushValue = (v: number) => values.push(v)
 
-    iter0.monitor(pushValue).forEach()
+    iter0.monitor('', pushValue).forEach()
     expect(values).toEqual([])
 
-    iter1.monitor(pushValue).forEach()
+    iter1.monitor('', pushValue).forEach()
     expect(values).toEqual([1])
 
     values = []
-    iter3.monitor(pushValue).forEach()
+    iter3.monitor('', pushValue).forEach()
     expect(values).toEqual([1, 2, 3])
+
+    values = []
+    iter3.monitor('', pushValue).forEach()
+    expect(values).toEqual([1, 1, 2, 2, 3, 3])
   })
 
-  test('substituteWhere', () => {
-    const double = (v: any) => [v, v]
-    const remove = (v: any) => []
-
-    expectIter(iter0.substituteWhere(isEven, double))([])
-    expectIter(iter1.substituteWhere(isEven, double))([1])
-    expectIter(iter1.substituteWhere(isOdd, double))([1, 1])
-    expectIter(iter1.substituteWhere(isOdd, remove))([])
-    expectIter(iter3.substituteWhere(isEven, double))([1, 2, 2, 3])
-    expectIter(iter3.substituteWhere(isEven, remove))([1, 3])
+  test('patchAt', () => {
+    expectIter(iter0.patchAt(0, 1))([])
+    expectIter(iter0.patchAt(0, 0, () => iter1))([1])
+    expectIter(iter0.patchAt(0, 10, () => iter1))([1])
+    expectIter(iter0.patchAt(-10, 0, () => iter1))([1])
+    expectIter(iter1.patchAt(-10, 0, () => Iter.of(2)))([2, 1])
+    expectIter(iter1.patchAt(-10, 10, () => Iter.of(2)))([2])
+    expectIter(iter1.patchAt(0, 0, () => Iter.of(2)))([2, 1])
+    expectIter(iter1.patchAt(1, 0, () => Iter.of(2)))([1, 2])
+    expectIter(iter1.patchAt(10, 10, () => Iter.of(2)))([1, 2])
+    expectIter(iter1.patchAt(100, 0, () => Iter.of(2)))([1, 2])
+    expectIter(iter3.patchAt(-10, 0, () => Iter.of(9)))([9, 1, 2, 3])
+    expectIter(iter3.patchAt(0, 0, () => Iter.of(9)))([9, 1, 2, 3])
+    expectIter(iter3.patchAt(1, 0, () => Iter.of(9)))([1, 9, 2, 3])
+    expectIter(iter3.patchAt(100, 0, () => Iter.of(9)))([1, 2, 3, 9])
+    expectIter(iter3.patchAt(0, 1, () => Iter.of(9)))([9, 2, 3])
+    expectIter(iter3.patchAt(1, 1, () => Iter.of(9)))([1, 9, 3])
+    expectIter(iter3.patchAt(100, 1, () => Iter.of(9)))([1, 2, 3, 9])
   })
 
-  test('substituteElem', () => {
-    expectIter(iter0.substituteElem(1, [10, 11]))([])
-    expectIter(iter1.substituteElem(0, [10, 11]))([1])
-    expectIter(iter1.substituteElem(1, [10, 11]))([10, 11])
-    expectIter(iter3.substituteElem(1, [10, 11]))([10, 11, 2, 3])
-    expectIter(iter3.substituteElem(2))([1, 3])
+  test('patchWhere', () => {
+    expectIter(iter0.patchWhere(isEven, 1, double))([])
+    expectIter(iter1.patchWhere(isEven, 1, double))([1])
+    expectIter(iter1.patchWhere(isOdd, 1, double))([1, 1])
+    expectIter(iter1.patchWhere(isOdd, 1, remove))([])
+    expectIter(iter3.patchWhere(isEven, 1, double))([1, 2, 2, 3])
+    expectIter(iter3.patchWhere(isEven, 0, double))([1, 2, 2, 2, 3])
+    expectIter(iter3.patchWhere(isEven, 1, remove))([1, 3])
+  })
+
+  test('patchElem', () => {
+    expectIter(iter0.patchElem(1, 1, [10, 11]))([])
+    expectIter(iter1.patchElem(0, 1, [10, 11]))([1])
+    expectIter(iter1.patchElem(1, 1, [10, 11]))([10, 11])
+    expectIter(iter3.patchElem(1, 1, [10, 11]))([10, 11, 2, 3])
+    expectIter(iter3.patchElem(2, 1))([1, 3])
+  })
+
+  test('patchWhere amount', () => {
+    expectIter(iter0.patchWhere(isEven, 1, () => Iter.of(10), 1))([])
+    expectIter(iter1.patchWhere(isEven, 0, () => Iter.of(10), 1))([1])
+    expectIter(iter1.patchWhere(isOdd, 0, () => Iter.of(10), 1))([10, 1])
+    expectIter(iter1.patchWhere(isOdd, 1, () => Iter.of(10), 1))([10])
+    expectIter(Iter.range(0, 5).patchWhere(isOdd, 1, () => Iter.of(10), 1))([0, 10, 2, 3, 4])
+    expectIter(Iter.range(0, 5).patchWhere(isOdd, 0, () => Iter.of(10), 1))([0, 10, 1, 2, 3, 4])
+    expectIter(Iter.range(0, 6).patchWhere(isOdd, 1, () => Iter.of(10), 2))([0, 10, 2, 10, 4, 5])
+    expectIter(Iter.range(0, 6).patchWhere(isOdd, 1, undefined, 2))([0, 2, 4, 5])
+  })
+
+  test('patchElem amount', () => {
+    expectIter(Iter.fromIterable('').patchElem('a', 0, 'ab', 1))('')
+    expectIter(Iter.fromIterable('a').patchElem('a', 0, 'XX', 1))('XXa')
+    expectIter(Iter.fromIterable('a').patchElem('a', 1, 'XX', 1))('XX')
+    expectIter(Iter.fromIterable('b').patchElem('a', 0, 'XX', 1))('b')
+    expectIter(Iter.fromIterable('bac').patchElem('a', 0, 'XX', 1))('bXXac')
+    expectIter(Iter.fromIterable('bacadata').patchElem('a', 0, 'XX', 2))('bXXacXXadata')
+    expectIter(Iter.fromIterable('bacadata').patchElem('a', 1, 'XX', 2))('bXXcXXdata')
   })
 
   test('splitWhere', () => {
@@ -521,27 +463,5 @@ describe('Iter', () => {
     expect(iter0.toSet()).toEqual(new Set())
     expect(iter1.toSet()).toEqual(new Set([1]))
     expect(iter3.toSet()).toEqual(new Set([1, 2, 3]))
-  })
-
-  test('can process twice', () => {
-    const it = iter3.map(addIndex)
-    expect(it.fold(Fold.sum)).toBe(12)
-    expect(it.fold(Fold.sum)).toBe(12)
-  })
-
-  test('can process many', () => {
-    expect(
-      iterInf.fold(
-        Fold.parallelMany<number>(
-          Fold.hasValue,
-          Fold.noValue,
-          Fold.product,
-          Fold.findOpt(v => v > 100),
-          Fold.some(v => v > 200),
-          Fold.every(v => v < 300),
-          Fold.findOpt()
-        )
-      )
-    ).toEqual([true, false, 0, 101, true, false, 0])
   })
 })
