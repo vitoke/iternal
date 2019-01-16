@@ -6,7 +6,8 @@ module.exports = {
   theme: 'minimal',
   target: 'es6',
 
-  mode: 'file',
+  mode: 'modules',
+  entrypoint: 'iternal',
   excludeExternals: true,
   excludeNotExported: true,
   excludePrivate: true

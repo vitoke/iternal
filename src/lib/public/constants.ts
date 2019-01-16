@@ -1,3 +1,7 @@
+/**
+ * @module iternal
+ */
+
 export const Errors = {
   NotAnIterator: 'NotAnIterator',
   NotIterable: 'NotIterable',
@@ -11,12 +15,13 @@ export const Errors = {
  * @typeparam E the array element type
  */
 export type NonEmpty<E> = [E, ...E[]]
-
-/**
- * Returns true if the input array `arr` is not empty.
- */
-export function isNonEmpty<T>(arr: T[]): arr is NonEmpty<T> {
-  return arr.length > 0
+export const NonEmpty = {
+  /**
+   * Returns true if the input array `arr` is not empty.
+   */
+  isNonEmpty<T>(arr: T[]): arr is NonEmpty<T> {
+    return arr.length > 0
+  }
 }
 
 /**
@@ -30,12 +35,15 @@ export type Lazy<T> = () => T
  * @typeparam T the value type
  */
 export type OptLazy<T> = Lazy<T> | T
-
-export const optToLazy = <T>(optLazy: OptLazy<T>): Lazy<T> => {
-  if (typeof optLazy === 'function') return optLazy as Lazy<T>
-  return () => optLazy
+export const OptLazy = {
+  toLazy<T>(optLazy: OptLazy<T>): Lazy<T> {
+    if (typeof optLazy === 'function') return optLazy as Lazy<T>
+    return () => optLazy
+  },
+  toValue<T>(optLazy: OptLazy<T>): T {
+    return OptLazy.toLazy(optLazy)()
+  }
 }
-export const optToValue = <T>(optLazy: OptLazy<T>): T => optToLazy(optLazy)()
 
 /**
  * Any function that takes an element of type E and its index, and returns a result of type R
@@ -83,7 +91,17 @@ export type Indexed<E> = Iterable<E> & { [key: number]: E; length: number }
 export type MonitorEffect<E> = (value: E, index: number, tag?: string) => void
 
 export type Dict<K, V> = Map<K, V[]>
-export const Dict = <K, V>(): Dict<K, V> => new Map()
+export const Dict = {
+  create<K, V>(): Dict<K, V> {
+    return new Map()
+  },
+  add<K, V>(dict: Dict<K, V>, key: K, value: V) {
+    const entries = dict.get(key)
+    if (entries === undefined) dict.set(key, [value])
+    else entries.push(value)
+    return dict
+  }
+}
 
 /**
  * A Dictionary with unique values per key, represented as a map of keys K to Sets of values V
@@ -91,10 +109,29 @@ export const Dict = <K, V>(): Dict<K, V> => new Map()
  * @typeparam V the value type
  */
 export type UniqueDict<K, V> = Map<K, Set<V>>
-export const UniqueDict = <K, V>(): UniqueDict<K, V> => new Map()
+export const UniqueDict = {
+  create<K, V>(): UniqueDict<K, V> {
+    return new Map()
+  },
+  add<K, V>(dict: UniqueDict<K, V>, key: K, value: V) {
+    const entrySet = dict.get(key)
+    if (entrySet === undefined) dict.set(key, new Set().add(value))
+    else entrySet.add(value)
+    return dict
+  }
+}
 
 /**
  * A Map with, for each key, the amount of occurrances of the key as its value
  */
 export type Histogram<K> = Map<K, number>
-export const Histogram = <K>(): Histogram<K> => new Map()
+export const Histogram = {
+  create<K>(): Histogram<K> {
+    return new Map()
+  },
+  add<K>(hist: Histogram<K>, value: K) {
+    const count = hist.get(value) || 0
+    hist.set(value, count + 1)
+    return hist
+  }
+}

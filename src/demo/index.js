@@ -1,4 +1,4 @@
-const { Iter, AsyncIter, Fold } = require('../../dist/iternal.umd.js')
+const { Iter, AsyncIter, Fold, Folds } = require('../../dist/iternal.umd.js')
 
 // const valueIter = Iter.range(0, 10).patchFirstWhere(v => v > 1, 1)
 
@@ -25,7 +25,7 @@ const { Iter, AsyncIter, Fold } = require('../../dist/iternal.umd.js')
 //     .fold(Fold.inverseFrequencies())
 // )
 
-const r = Fold.sum.combine(Fold.count).mapResult(([sum, count]) => sum / count)
+const r = Fold.combine(Folds.sum, Folds.count).mapResult(([sum, count]) => sum / count)
 
 // console.log(r.apply(Iter.of(1, 3, 5, 3, 4)))
 
@@ -45,8 +45,38 @@ const r = Fold.sum.combine(Fold.count).mapResult(([sum, count]) => sum / count)
 //     )
 // )
 // console.log(Fold.findLastOr(undefined).apply('abc'))
-Iter.fromIterable(Fold.findOr(undefined).applyIter('abc'))
-  .monitor()
-  .map(a => true)
-  .monitor()
-  .forEach(console.log)
+Fold.foldIter('abcdef', Fold.combine(Folds.first(), Folds.elemAt(2, 'X'), Folds.last())).forEach(
+  console.log
+)
+// .monitor()
+// .map(a => true)
+// .monitor()
+// .forEach(console.log)
+
+// async function run() {
+//   while (true) {
+//     await new Promise(resolve => setTimeout(resolve, 100))
+
+//   }
+// }
+
+Iter.randomInt(0, 100)
+  .repeat()
+  .foldIter(Fold.combine(Folds.last(), Folds.sum, Folds.product, Folds.average))
+  .map(
+    ([value, sum, prod, avg]) =>
+      `The latest value is ${value}. The current sum is ${sum}, the product ${prod} and the average ${avg}`
+  )
+  .take(5)
+  .forEach(v => console.log(v))
+
+// run()
+// const chars = ' X'
+// Iter.randomInt(0, chars.length)
+//   .repeat()
+//   .map(i => chars[i])
+//   .sliding(80, 10)
+//   .map(arr => arr.join(''))
+//   .toAsync()
+//   .delay(30)
+//   .forEach(console.log)

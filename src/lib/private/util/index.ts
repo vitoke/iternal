@@ -20,7 +20,7 @@ export class Type {
   static isAsyncIterable = (o: any) => Symbol.asyncIterator in Object(o)
 }
 
-export const error = (name: string, msg?: string): Error => {
+export function error(name: string, msg?: string): Error {
   const result = Error(msg)
   result.name = name
   return result

@@ -1,3 +1,7 @@
+/**
+ * @module iternal
+ */
+
 import {
   checkPureAnyIterable,
   checkPureAsyncIterable,
@@ -17,15 +21,15 @@ import {
   MonitorEffect,
   NonEmpty,
   OptLazy,
-  optToValue,
   Pred
 } from '../constants'
-import { Iter } from '../iternal-sync'
 import { Folds } from '../iternal-fold/folds'
-import { Folder, MonoFun } from '../iternal-fold/types'
+import { Folder, MonoFun } from '../iternal-fold/gen-folder'
+import { Iter } from '../iternal-sync'
 
-const toIterator = <X>(iterable: AnyIterable<X>): AnyIterator<X> =>
-  getAnyIterator(checkPureAnyIterable(iterable))
+function toIterator<X>(iterable: AnyIterable<X>): AnyIterator<X> {
+  return getAnyIterator(checkPureAnyIterable(iterable))
+}
 
 /**
  * Enrichment class allowing for manipulation of asynchronous iteratables.
@@ -170,6 +174,20 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    */
   static flatten<E>(iterable: AsyncIterable<AnyIterable<E>>): AsyncIter<E> {
     return AsyncIter.fromIterable(iterable).flatMap(v => v)
+  }
+
+  static fromPromise<E>(promise: Promise<E>): AsyncIter<E> {
+    return AsyncIter.fromIterator<E>(async function*() {
+      yield promise
+    })
+  }
+
+  static fromSingleCallback<E extends any[]>(
+    consume: (emit: (...v: E) => void) => void
+  ): AsyncIter<E> {
+    return AsyncIter.fromPromise(
+      new Promise<E>(resolve => consume((...values: E) => resolve(values)))
+    )
   }
 
   private constructor(private readonly iterable: AsyncIterable<T>) {
@@ -532,7 +550,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
     }
     if (result === NoValue) {
       if (otherwise === undefined) throw Error('no value')
-      return optToValue(otherwise)
+      return OptLazy.toValue(otherwise)
     }
 
     return result
@@ -923,6 +941,13 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * @param tag a tag that can be used when performing the side-effect
    * @param effect the side-effect to perform for each yielded element
    * @returns this exact instance
+   * ```typescript
+   * AsyncIter.nats.monitor("nats").take(3)
+   * result:
+   * > nats[0]: 0
+   * > nats[1]: 1
+   * > nats[2]: 2
+   * ```
    */
   monitor(
     tag: string = '',
@@ -1156,6 +1181,19 @@ export class AsyncIter<T> implements AsyncIterable<T> {
       insert === undefined ? undefined : () => insert,
       amount
     )
+  }
+
+  /**
+   * Returns an AsyncIter that emits the same elements as this AsyncIter, however only after waiting the given `ms` milliseconds before yielding each element.
+   * @param ms the amount of milliseconds to delay yielding an element
+   */
+  delay(ms: number) {
+    return this.applyCustomOperation(async function*(iterable) {
+      for await (const elem of iterable) {
+        await new Promise(resolve => setTimeout(resolve, ms))
+        yield elem
+      }
+    })
   }
 
   /**

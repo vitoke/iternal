@@ -1,39 +1,25 @@
-import { Fold } from '../fold'
-import { Pred, OptLazy, optToValue, Dict, UniqueDict, Histogram } from '../../constants'
-import { NoValue } from '../../../private/iternal-common'
-import { Folder, MonoFolder } from '../types'
-
-const throwFoldError = () => {
-  throw Error('fold error')
-}
-
-function addToDict<K, V>(dict: Dict<K, V>, key: K, value: V) {
-  const entries = dict.get(key)
-  if (entries === undefined) dict.set(key, [value])
-  else entries.push(value)
-  return dict
-}
-
-function addToUniqueDict<K, V>(dict: UniqueDict<K, V>, key: K, value: V) {
-  const entrySet = dict.get(key)
-  if (entrySet === undefined) dict.set(key, new Set().add(value))
-  else entrySet.add(value)
-  return dict
-}
-
 /**
- * A utility class containing funcions to create new Folders, and commonly usable Folders
+ * @module iternal
  */
-export class Folds {
+
+import { NoValue } from '../../../private/iternal-common'
+import { Dict, Histogram, OptLazy, Pred, UniqueDict } from '../../constants'
+import { Folder, GenFolder, MonoFolder } from '../gen-folder'
+
+export namespace Folds {
+  function throwFoldError(): never {
+    throw Error('fold error')
+  }
+
   /**
    * Returns a folder that takes all elements of any type, converts them to a string, and concatenates them.
    * @example
    * ```typescript
-   * Iter.of(1, 3, 5).fold(Fold.stringAppend)
+   * Fold.fold([1, 2, 3], Folds.stringAppend)
    * result: '123'
    * ```
    */
-  static stringAppend: Folder<any, string> = Fold.create('', (state, elem) =>
+  export const stringAppend: Folder<any, string> = Folder.create('', (state, elem) =>
     state.concat(String(elem))
   )
 
@@ -41,11 +27,11 @@ export class Folds {
    * Returns a folder that takes all elements of any type, converts them to a string, and concatenates them in reverse order.
    * @example
    * ```typescript
-   * Iter.of(1, 3, 5).fold(Fold.stringPrepend)
+   * Fold.fold([1, 2, 3], Folds.stringPrepend)
    * result: '321'
    * ```
    */
-  static stringPrepend: Folder<any, string> = Fold.create('', (state, elem) =>
+  export const stringPrepend: Folder<any, string> = Folder.create('', (state, elem) =>
     String(elem).concat(state)
   )
 
@@ -53,11 +39,11 @@ export class Folds {
    * Returns a folder that outputs the the amount of elements processed
    * @example
    * ```typescript
-   * Iter.of(1, 3, 5).fold(Fold.count)
+   * Fold.fold([1, 3, 5], Folds.count)
    * result: 3
    * ```
    */
-  static count: Folder<any, number> = Fold.create(0, (_, __, index) => index + 1)
+  export const count: Folder<any, number> = Folder.create(0, (_, __, index) => index + 1)
 
   /**
    * Returns a folder that takes tuple elements of [string, V] and returns an object with those keys and values.
@@ -66,12 +52,12 @@ export class Folds {
    * @param target a target object to add the properties to
    * @example
    * ```typescript
-   * Iter.of(['foo', 1], ['bar', true]).fold(Fold.toObject())
+   * Fold.fold([['foo', 1], ['bar', true]], Folds.toObject())
    * result: { foo: 1, bar: true}
    * ```
    */
-  static toObject<V>(target?: {}): Folder<[string, V], { [key: string]: V }> {
-    return Fold.create<[string, V], { [key: string]: V }>(
+  export function toObject<V>(target?: {}): Folder<[string, V], { [key: string]: V }> {
+    return Folder.create<[string, V], { [key: string]: V }>(
       () => target || {},
       (obj, [name, value]) => {
         obj[name] = value
@@ -91,19 +77,19 @@ export class Folds {
    *    - (f: () => T): If this Iter is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
-   * Iter.nats.find(v => v > 10)
+   * Fold.fold(Iter.nats, Folds.find(v => v > 10))
    * result: 11
    * ```
    */
-  static find<E>(pred: Pred<E>, otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
-    return Fold.createGen<E, E | NoValue, E>(
+  export function find<E>(pred: Pred<E>, otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
+    return GenFolder.create<E, E | NoValue, E>(
       NoValue,
       (found, value, index) => {
         if (found !== NoValue) return found
         if (pred(value, index)) return value
         return NoValue
       },
-      state => (state === NoValue ? optToValue(otherwise) : state),
+      state => (state === NoValue ? OptLazy.toValue(otherwise) : state),
       state => state !== NoValue
     )
   }
@@ -119,15 +105,15 @@ export class Folds {
    *    - (f: () => T): If this Iter is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
-   * Iter.of(1, 4, 2, 9, 3, 8).findLast(v => v < 8)
+   * Fold.fold([1, 4, 2, 9, 3, 8], Folds.findLast(v => v < 8))
    * result: 3
    * ```
    */
-  static findLast<E>(pred: Pred<E>, otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
-    return Fold.createGen<E, E | NoValue, E>(
+  export function findLast<E>(pred: Pred<E>, otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
+    return GenFolder.create<E, E | NoValue, E>(
       NoValue,
       (found, value, index) => (pred(value, index) ? value : found),
-      state => (state === NoValue ? optToValue(otherwise) : state)
+      state => (state === NoValue ? OptLazy.toValue(otherwise) : state)
     )
   }
 
@@ -141,12 +127,12 @@ export class Folds {
    *    - (f: () => T): If this Iter is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
-   * Iter.fromIterable('abc').fold(Fold.first())
+   * Fold.fold('abc', Folds.first())
    * result: 'a'
    * ```
    */
-  static first<E>(otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
-    return Folds.find(() => true, otherwise)
+  export function first<E>(otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
+    return find(() => true, otherwise)
   }
 
   /**
@@ -159,12 +145,12 @@ export class Folds {
    *    - (f: () => T): If this Iter is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
-   * Iter.fromIterable('abc').fold(Fold.last())
+   * Fold.fold('abc', Folds.last())
    * result: 'c'
    * ```
    */
-  static last<E>(otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
-    return Folds.findLast(() => true, otherwise)
+  export function last<E>(otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
+    return findLast(() => true, otherwise)
   }
 
   /**
@@ -177,12 +163,12 @@ export class Folds {
    *    - (f: () => T): If this Iter is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
-   * Iter.fromIterable('abcdef').fold(Fold.elemAt(3))
+   * Fold.fold('abcdef', Folds.elemAt(3))
    * result: 'd'
    * ```
    */
-  static elemAt<E>(index: number, otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
-    return Folds.find((_, i) => i === index, otherwise)
+  export function elemAt<E>(index: number, otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
+    return find((_, i) => i === index, otherwise)
   }
 
   /**
@@ -190,12 +176,16 @@ export class Folds {
    * @typeparam E the input element type
    * @example
    * ```typescript
-   * Iter.of(1, 3, 5, 7).fold(Fold.some(isEven))
+   * Fold.fold([1, 3, 5, 7], Folds.some(isEven))
    * result: false
    * ```
    */
-  static some<E>(pred: Pred<E>): Folder<E, boolean> {
-    return Fold.create(false, (state, value, index) => state || pred(value, index), state => state)
+  export function some<E>(pred: Pred<E>): Folder<E, boolean> {
+    return Folder.create(
+      false,
+      (state, value, index) => state || pred(value, index),
+      state => state
+    )
   }
 
   /**
@@ -203,66 +193,84 @@ export class Folds {
    * @typeparam E the input element type
    * @example
    * ```typescript
-   * Iter.of(1, 3, 5, 7).fold(Fold.every(isOdd))
+   * Fold.fold([1, 3, 5, 7], Folds.every(isOdd))
    * result: true
    * ```
    */
-  static every<E>(pred: Pred<E>): Folder<E, boolean> {
-    return Fold.create(true, (state, value, index) => state && pred(value, index), state => !state)
+  export function every<E>(pred: Pred<E>): Folder<E, boolean> {
+    return Folder.create(
+      true,
+      (state, value, index) => state && pred(value, index),
+      state => !state
+    )
   }
 
   /**
-   * Returns a folder that returns true any received element equals given `elem`.
+   * Returns a folder that returns true if any received element equals given `elem`.
    * @typeparam E the input element type
    * @example
    * ```typescript
-   * Iter.of(1, 3, 4, 7).fold(Fold.contains(3))
+   * Fold.fold([1, 3, 4, 7], Folds.contains(3))
    * result: true
    * ```
    */
-  static contains<E>(elem: E): Folder<E, boolean> {
-    return Folds.some(e => e === elem)
+  export function contains<E>(elem: E): Folder<E, boolean> {
+    return some(e => e === elem)
+  }
+
+  /**
+   * Returns a folder that returns true if any of the received elements is contained the given `elems`.
+   * @typeparam E the input element type
+   * @example
+   * ```typescript
+   * Fold.fold([1, 3, 4, 7], Folds.containsAny(3, 20, 10))
+   * result: true
+   * ```
+   */
+  export function containsAny<E>(...elems: E[]): Folder<E, boolean> {
+    const set = new Set(elems)
+    return some(e => set.has(e))
   }
 
   /**
    * Returns a folder that returns true if all received booleans are true
    * @example
    * ```typescript
-   * Iter.of(true, false).fold(Fold.and)
+   * Fold.fold([true, false], Folds.and)
    * result: false
    * ```
    */
-  static and: MonoFolder<boolean> = Folds.every(v => v)
+  export const and: MonoFolder<boolean> = every(v => v)
 
   /**
    * Returns a folder that returns true if any received booleans is true
    * @example
    * ```typescript
-   * Iter.of(true, false).fold(Fold.or)
+   * Fold.fold([true, false], Folds.or)
    * result: true
    * ```
    */
-  static or: MonoFolder<boolean> = Folds.some(v => v)
+  export const or: MonoFolder<boolean> = some(v => v)
 
   /**
    * Returns a folder that returns true if any value is received
    * @example
    * ```typescript
-   * Iter.of(1, 2).fold(Fold.hasValue)
+   * Fold.fold([1, 2], Folds.hasValue)
    * result: true
    * ```
    */
-  static hasValue: Folder<any, boolean> = Folds.some(() => true)
+  export const hasValue: Folder<any, boolean> = some(() => true)
 
   /**
    * Returns a folder that returns true if no value is received
    * @example
    * ```typescript
-   * Iter.of(1, 2).fold(Fold.noValue)
+   * Fold.fold([1, 2], Folds.noValue)
    * result: false
    * ```
    */
-  static noValue: Folder<any, boolean> = Folds.every(() => false)
+  export const noValue: Folder<any, boolean> = every(() => false)
 
   /**
    * Returns a folder that creates an array from the received elements.
@@ -271,12 +279,12 @@ export class Folds {
    * @param target the target array to push elements to
    * @example
    * ```typescript
-   * Iter.of(1, 3, 5, 7).fold(Fold.toArray())
+   * Iter.fold(Iter.of(1, 3, 5, 7), Folds.toArray())
    * result: [1, 3, 5, 7]
    * ```
    */
-  static toArray<E>(target?: E[]): Folder<E, E[]> {
-    return Fold.create(
+  export function toArray<E>(target?: E[]): Folder<E, E[]> {
+    return Folder.create(
       () => target || [],
       (arr, elem) => {
         arr.push(elem)
@@ -293,12 +301,12 @@ export class Folds {
    * @param target the target Map
    * @example
    * ```typescript
-   * Iter.of(['a', 1], ['b', 5]).fold(Fold.toMap())
+   * Fold.fold([['a', 1], ['b', 5]], Folds.toMap())
    * result: Map(a -> 1, b -> 5)
    * ```
    */
-  static toMap<K, V>(target?: Map<K, V>): Folder<[K, V], Map<K, V>> {
-    return Fold.create(() => target || new Map(), (map, [key, value]) => map.set(key, value))
+  export function toMap<K, V>(target?: Map<K, V>): Folder<[K, V], Map<K, V>> {
+    return Folder.create(() => target || new Map(), (map, [key, value]) => map.set(key, value))
   }
 
   /**
@@ -308,12 +316,12 @@ export class Folds {
    * @param target the target Set
    * @example
    * ```typescript
-   * Iter.of(1, 3, 5, 3, 1).fold(Fold.toSet())
+   * Fold.fold([1, 3, 5, 3, 1], Folds.toSet())
    * result: Set(1, 3, 5)
    * ```
    */
-  static toSet<E>(target?: Set<E>): Folder<E, Set<E>> {
-    return Fold.create(() => target || new Set(), (set, value) => set.add(value))
+  export function toSet<E>(target?: Set<E>): Folder<E, Set<E>> {
+    return Folder.create(() => target || new Set(), (set, value) => set.add(value))
   }
 
   /**
@@ -323,14 +331,14 @@ export class Folds {
    * @param keyFun a function that takes an element V and returns its key K
    * @example
    * ```typescript
-   * Iter.of('foo', 'test', 'bar').fold(Fold.groupBy(v => v.length))
+   * Fold.fold(['foo', 'test', 'bar'], Folds.groupBy(v => v.length))
    * result: Map(3 -> ['foo', 'bar'], 4 -> ['test'])
    * ```
    */
-  static groupBy<K, V>(keyFun: (value: V, index: number) => K): Folder<V, Dict<K, V>> {
-    return Fold.create(
-      () => Dict(),
-      (dict, value, index) => addToDict(dict, keyFun(value, index), value)
+  export function groupBy<K, V>(keyFun: (value: V, index: number) => K): Folder<V, Dict<K, V>> {
+    return Folder.create(
+      () => Dict.create(),
+      (dict, value, index) => Dict.add(dict, keyFun(value, index), value)
     )
   }
 
@@ -341,14 +349,16 @@ export class Folds {
    * @param keyFun a function that takes an element V and returns its key K
    * @example
    * ```typescript
-   * Iter.of('foo', 'test', 'foo').fold(Fold.groupBy(v => v.length))
+   * Fold.fold(['foo', 'test', 'foo'], Folds.groupBy(v => v.length))
    * result: Map(3 -> Set('foo'), 4 -> Set('test'))
    * ```
    */
-  static groupByUnique<K, V>(keyFun: (value: V, index: number) => K): Folder<V, UniqueDict<K, V>> {
-    return Fold.create(
-      () => UniqueDict(),
-      (dict, value, index) => addToUniqueDict(dict, keyFun(value, index), value)
+  export function groupByUnique<K, V>(
+    keyFun: (value: V, index: number) => K
+  ): Folder<V, UniqueDict<K, V>> {
+    return Folder.create(
+      () => UniqueDict.create(),
+      (dict, value, index) => UniqueDict.add(dict, keyFun(value, index), value)
     )
   }
 
@@ -358,19 +368,12 @@ export class Folds {
    * @typeparam E the element type
    * @example
    * ```typescript
-   * Iter.fromIterable('adcbcd').fold(Fold.histogram())
+   * Fold.fold('adcbcd', Folds.histogram())
    * result: Map('a' -> 1, 'd' -> 2, 'c' -> 2, 'b' -> 1)
    * ```
    */
-  static histogram<E>(): Folder<E, Histogram<E>> {
-    return Fold.create(
-      () => Histogram(),
-      (dict, value) => {
-        const count = dict.get(value) || 0
-        dict.set(value, count + 1)
-        return dict
-      }
-    )
+  export function histogram<E>(): Folder<E, Histogram<E>> {
+    return Folder.create(() => Histogram.create(), Histogram.add)
   }
 
   /**
@@ -378,14 +381,14 @@ export class Folds {
    * @typeparam E the element type
    * @example
    * ```typescript
-   * Iter.fromIterable('adcbcd').fold(Fold.elementsByFreq())
+   * Fold.fold('adcbcd', Folds.elementsByFreq())
    * result: Map(1 -> Set('a', 'b'), 2 -> Set('d', 'c'))
    * ```
    */
-  static elementsByFreq<E>(): Folder<E, UniqueDict<number, E>> {
-    return Folds.histogram().mapResult(dict => {
-      const result = UniqueDict<number, E>()
-      for (const key of dict.keys()) addToUniqueDict(result, dict.get(key), key)
+  export function elementsByFreq<E>(): Folder<E, UniqueDict<number, E>> {
+    return histogram().mapResult(dict => {
+      const result = UniqueDict.create<number, E>()
+      for (const key of dict.keys()) UniqueDict.add(result, dict.get(key), key)
       return result
     })
   }
@@ -397,35 +400,33 @@ export class Folds {
    * @param pred a predicate over elements E
    * @example
    * ```typescript
-   * Iter.of(1, 2, 3, 4, 5).fold(Fold.partition(isEven))
+   * Fold.fold([1, 2, 3, 4, 5], Folds.partition(isEven))
    * result: [[2, 4], [1, 3, 5]]
    * ```
    */
-  static partition<E>(pred: Pred<E>): Folder<E, [E[], E[]]> {
-    return Folds.groupBy(pred).mapResult(
-      (map): [E[], E[]] => [map.get(true) || [], map.get(false) || []]
-    )
+  export function partition<E>(pred: Pred<E>): Folder<E, [E[], E[]]> {
+    return groupBy(pred).mapResult((map): [E[], E[]] => [map.get(true) || [], map.get(false) || []])
   }
 
   /**
    * Returns a folder that outputs the sum of all received numbers
    * @example
    * ```typescript
-   * Iter.of(1, 2, 5).fold(Fold.sum)
+   * Fold.fold([1, 2, 5], Folds.sum)
    * result: 8
    * ```
    */
-  static sum: MonoFolder<number> = Fold.createMono(0, (state, num) => state + num)
+  export const sum: MonoFolder<number> = MonoFolder.create(0, (state, num) => state + num)
 
   /**
    * Returns a folder that outputs the product of all received numbers
    * @example
    * ```typescript
-   * Iter.of(1, 2, 5).fold(Fold.product)
+   * Fold.fold([1, 2, 5], Folds.product)
    * result: 10
    * ```
    */
-  static product: MonoFolder<number> = Fold.createMono(
+  export const product: MonoFolder<number> = MonoFolder.create(
     1,
     (state, num) => state * num,
     state => state === 0
@@ -435,11 +436,11 @@ export class Folds {
    * Returns a folder that outputs the average of all received numbers
    * @example
    * ```typescript
-   * Iter.of(1, 4, 4).fold(Fold.average)
+   * Fold.fold([1, 4, 4], Folds.average)
    * result: 3
    * ```
    */
-  static average: MonoFolder<number> = Fold.createMono(
+  export const average: MonoFolder<number> = MonoFolder.create(
     0,
     (avg, value, index) => avg + (value - avg) / (index + 1)
   )

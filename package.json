@@ -1,7 +1,7 @@
 {
   "name": "iternal",
-  "version": "0.0.0",
-  "description": "Provides a powerful API for native JS iterables and async iterables",
+  "version": "0.0.1",
+  "description": "Provides a powerful API for native ES6 iterables and async iterables",
   "keywords": [
     "iterable",
     "iterator",
@@ -119,6 +119,7 @@
     "tslint-config-prettier": "^1.15.0",
     "tslint-config-standard": "^8.0.1",
     "typedoc": "^0.13.0",
+    "typedoc-plugin-external-module-name": "^2.0.0",
     "typescript": "^3.2.2"
   }
 }

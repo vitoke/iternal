@@ -1,3 +1,7 @@
+/**
+ * @module iternal
+ */
+
 import {
   checkPureIterable,
   getIterator,
@@ -16,13 +20,14 @@ import {
   MonitorEffect,
   NonEmpty,
   OptLazy,
-  optToValue,
   Pred
 } from '../constants'
-import { Folder, MonoFun } from '../iternal-fold/types'
+import { AsyncIter } from '../iternal-async'
+import { Folder, MonoFun } from '../iternal-fold/gen-folder'
 
-const toIterator = <T>(iterable: Iterable<T>): Iterator<T> =>
-  getIterator(checkPureIterable(iterable))
+function toIterator<T>(iterable: Iterable<T>): Iterator<T> {
+  return getIterator(checkPureIterable(iterable))
+}
 
 /**
  * Enrichment class allowing for manipulation of synchronous iteratables.
@@ -702,7 +707,7 @@ export class Iter<T> implements Iterable<T> {
     }
     if (result === NoValue) {
       if (otherwise === undefined) throw Error('no value')
-      return optToValue(otherwise)
+      return OptLazy.toValue(otherwise)
     }
 
     return result
@@ -724,9 +729,9 @@ export class Iter<T> implements Iterable<T> {
    * ```
    */
   zipWith<O, R, T>(
-    zipFun: (t: T, o: O, ...others: any[]) => R,
+    zipFun: (t: T, o: O, ...others: unknown[]) => R,
     other1Iterable: Iterable<O>,
-    ...otherIterables: Iterable<any>[]
+    ...otherIterables: Iterable<unknown>[]
   ): Iter<R> {
     if (
       this.isEmptyInstance ||
@@ -750,7 +755,7 @@ export class Iter<T> implements Iterable<T> {
           if (done) return
           values.push(value)
         }
-        yield zipFun(...(values as [T, O, ...any[]]))
+        yield zipFun(...(values as [T, O, ...unknown[]]))
       }
     })
   }
@@ -768,8 +773,11 @@ export class Iter<T> implements Iterable<T> {
    * result: ([0, 5], [1, 2], [3, 3])
    * ```
    */
-  zip<O>(other1Iterable: Iterable<O>, ...otherIterables: Iterable<any>[]): Iter<[T, O, ...any[]]> {
-    const toTuple = (...args: [T, O, ...any[]]): [T, O, ...any[]] => args
+  zip<O>(
+    other1Iterable: Iterable<O>,
+    ...otherIterables: Iterable<any>[]
+  ): Iter<[T, O, ...unknown[]]> {
+    const toTuple = (...args: [T, O, ...unknown[]]): [T, O, ...unknown[]] => args
 
     return this.zipWith(toTuple, other1Iterable, ...otherIterables)
   }
@@ -802,7 +810,7 @@ export class Iter<T> implements Iterable<T> {
    * ```
    */
   zipAllWith<O, R>(
-    zipFun: (t?: T, o?: O, ...others: any[]) => R,
+    zipFun: (t?: T, o?: O, ...others: unknown[]) => R,
     other1Iterable: Iterable<O>,
     ...otherIterables: Iterable<any>[]
   ): Iter<R> {
@@ -841,7 +849,7 @@ export class Iter<T> implements Iterable<T> {
   zipAll<O>(
     other1Iterable: Iterable<O>,
     ...otherIterables: Iterable<any>[]
-  ): Iter<[T?, O?, ...any[]]> {
+  ): Iter<[T?, O?, ...unknown[]]> {
     const toTuple = (...args: [T?, O?, ...any[]]) => args
 
     return this.zipAllWith(toTuple, other1Iterable, ...otherIterables)
@@ -883,7 +891,8 @@ export class Iter<T> implements Iterable<T> {
    * ```
    */
   interleave(...otherIterables: NonEmpty<Iterable<T>>): Iter<T> {
-    return Iter.flatten(this.zip(...otherIterables))
+    const zipped = (this.zip(...otherIterables) as unknown) as Iter<T[]>
+    return Iter.flatten(zipped)
   }
 
   /**
@@ -896,10 +905,8 @@ export class Iter<T> implements Iterable<T> {
    * ```
    */
   interleaveAll(...otherIterables: NonEmpty<Iterable<T>>): Iter<T> {
-    return Iter.flatten<T | undefined>(this.zipAll(...otherIterables)).patchElem(
-      undefined,
-      1
-    ) as Iter<T>
+    const zipped = (this.zipAll(...otherIterables) as unknown) as Iter<(T | undefined)[]>
+    return Iter.flatten<T | undefined>(zipped).patchElem(undefined, 1) as Iter<T>
   }
 
   /**
@@ -912,9 +919,13 @@ export class Iter<T> implements Iterable<T> {
    * ```
    */
   interleaveRound(...otherIterables: NonEmpty<Iterable<T>>): Iter<T> {
-    const its = otherIterables.map(it => Iter.fromIterable(it).repeat()) as NonEmpty<Iter<T>>
+    const repeatedIterables = otherIterables.map(it => Iter.fromIterable(it).repeat()) as NonEmpty<
+      Iter<T>
+    >
 
-    return Iter.flatten(this.repeat().zip(...its))
+    const iterArrayT = (this.repeat().zip(...repeatedIterables) as unknown) as Iter<T[]>
+
+    return Iter.flatten(iterArrayT)
   }
 
   /**
@@ -1093,6 +1104,14 @@ export class Iter<T> implements Iterable<T> {
    * @param tag a tag that can be used when performing the side-effect
    * @param effect the side-effect to perform for each yielded element
    * @returns this exact instance
+   * @example
+   * ```typescript
+   * Iter.nats.monitor("nats").take(3)
+   * result:
+   * > nats[0]: 0
+   * > nats[1]: 1
+   * > nats[2]: 2
+   * ```
    */
   monitor(
     tag: string = '',
@@ -1348,5 +1367,12 @@ export class Iter<T> implements Iterable<T> {
    */
   toSet(): Set<T> {
     return new Set(this)
+  }
+
+  /**
+   * Returns this Iter as an asynchronous AsyncIter instance
+   */
+  toAsync(): AsyncIter<T> {
+    return AsyncIter.fromIterable(this)
   }
 }

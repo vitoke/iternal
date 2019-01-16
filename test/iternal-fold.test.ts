@@ -1,5 +1,5 @@
 import { isEven } from './test-utils'
-import { Folder, Fold, Folds, Iter } from '../src/lib/public/iternal'
+import { Folder, Iter, Folds, Fold } from '../src/lib/public/iternal'
 
 const ExpectThrow = Symbol()
 type ExpectThrow = typeof ExpectThrow
@@ -7,9 +7,9 @@ type ExpectThrow = typeof ExpectThrow
 const compare = <I, O>(folder: Folder<I, O>, ...is: [Iterable<I>, O | ExpectThrow][]) =>
   is.forEach(([i, o]) => {
     if (o === ExpectThrow) {
-      return expect(() => Fold.apply(folder, i)).toThrow()
+      return expect(() => Fold.fold(i, folder)).toThrow()
     }
-    expect(Fold.apply(folder, i)).toEqual(o)
+    expect(Fold.fold(i, folder)).toEqual(o)
   })
 
 describe('Fold', () => {
@@ -261,7 +261,7 @@ describe('Fold', () => {
 
   test('combine', () => {
     compare(
-      Folds.sum.combine(Folds.product),
+      Fold.combine(Folds.sum, Folds.product),
       [[], [0, 1]],
       [[1], [1, 1]],
       [[2, 3], [5, 6]],
@@ -272,8 +272,8 @@ describe('Fold', () => {
 
 describe('FoldIter', () => {
   test('sum', () => {
-    expect([...Fold.applyIter(Folds.sum, [])]).toEqual([])
-    expect([...Fold.applyIter(Folds.sum, [1])]).toEqual([1])
-    expect([...Fold.applyIter(Folds.sum, [1, 3, 6])]).toEqual([1, 4, 10])
+    expect([...Fold.foldIter([], Folds.sum)]).toEqual([])
+    expect([...Fold.foldIter([1], Folds.sum)]).toEqual([1])
+    expect([...Fold.foldIter([1, 3, 6], Folds.sum)]).toEqual([1, 4, 10])
   })
 })
