@@ -1,6 +1,6 @@
 {
   "name": "iternal",
-  "version": "1.0.1",
+  "version": "v1.0.1",
   "description": "Provides a powerful API for native ES6 iterables and async iterables",
   "keywords": [
     "iterable",
@@ -10,7 +10,7 @@
   ],
   "main": "dist/iternal.umd.js",
   "module": "dist/iternal.es5.js",
-  "typings": "dist/types/iternal.d.ts",
+  "typings": "dist/types/public/iternal.d.ts",
   "files": [
     "dist"
   ],
