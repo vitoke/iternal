@@ -21,8 +21,12 @@ export const Folder = {
    */
   create<A, R>(initState: OptLazy<R>, nextState: FoldFun<A, R>, escape?: Pred<R>): Folder<A, R> {
     return GenFolder.create(OptLazy.toLazy(initState), nextState, v => v, escape)
+  },
+  fixed<R>(result: R): Folder<any, R> {
+    return Folder.create(result, () => result, () => true)
   }
 }
+
 /**
  * A Fold function that has the same input and output type
  * @typeparam A the input and result type
@@ -98,6 +102,15 @@ export class GenFolder<A, S, R> {
       this.createInitState,
       this.nextState,
       result => mapFun(this.stateToResult(result)),
+      this.escape
+    )
+  }
+
+  mapInput<A2>(mapFun: (value: A2) => A): GenFolder<A2, S, R> {
+    return new GenFolder(
+      this.createInitState,
+      (state, elem, index) => this.nextState(state, mapFun(elem), index),
+      this.stateToResult,
       this.escape
     )
   }

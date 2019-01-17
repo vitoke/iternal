@@ -366,14 +366,35 @@ export namespace Folds {
    * Returns a folder that creates a histogram of the received elements.
    * That is, it creates a Map with the elements as keys and the amount of occurrances as values.
    * @typeparam E the element type
+   * @param sortBy if undefined will return the histogram in value order, if value is 'TOP' it will order the histogram
+   *               from highest to lowest, otherwise it will order the histogram from lowest to highest frequency.
+   * @param amount if `sortBy` is specified, this parameter limits the amount of results
    * @example
    * ```typescript
    * Fold.fold('adcbcd', Folds.histogram())
    * result: Map('a' -> 1, 'd' -> 2, 'c' -> 2, 'b' -> 1)
    * ```
    */
-  export function histogram<E>(): Folder<E, Histogram<E>> {
-    return Folder.create(() => Histogram.create(), Histogram.add)
+  export function histogram<E>(
+    sortBy?: 'TOP' | 'BOTTOM',
+    amount?: number
+  ): Folder<E, Histogram<E>> {
+    if (amount !== undefined && amount <= 0) {
+      return Folder.fixed(Histogram.create())
+    }
+
+    const folder = Folder.create<E, Histogram<E>>(() => Histogram.create(), Histogram.add)
+
+    if (sortBy === undefined) return folder
+
+    return folder.mapResult(hist => {
+      const histArray = [...hist.entries()]
+      const comp: (a: number, b: number) => number =
+        sortBy === 'TOP' ? (a, b) => b - a : (a, b) => a - b
+      const sortFun = (a: [any, number], b: [any, number]) => comp(a[1], b[1])
+      histArray.sort(sortFun)
+      return new Map(histArray.slice(0, amount))
+    })
   }
 
   /**

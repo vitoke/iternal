@@ -8,7 +8,7 @@ const fs = require('fs')
 const { Iter, AsyncIter, Fold, Folds } = require('../../dist/iternal.umd.js')
 
 // Process command line arguments
-const { file = '../../README.md', split = '\n ' } = Iter.fromIterable(process.argv)
+const { file = 'README.md', split = '\n ' } = Iter.fromIterable(process.argv)
   .drop(2)
   .sliding(2)
   .map(([opt, value]) => [opt.slice(1), value])
@@ -24,7 +24,7 @@ async function run() {
   const result = await AsyncIter.flatten(fileIter)
     .splitWhere(v => splitChars.has(v))
     .map(v => ''.concat(...v))
-    .fold(Fold.combine(Folds.histogram(), Folds.elementsByFreq()))
+    .fold(Fold.combine(Folds.histogram('TOP', 5), Folds.average.mapInput(v => v.length)))
 
   console.log(result)
 }
