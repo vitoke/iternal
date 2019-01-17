@@ -264,8 +264,8 @@ export class AsyncIter<T> implements AsyncIterable<T> {
       return folder.stateToResult(result)
     }
 
-    for await (const e of this) {
-      result = folder.nextState(result, e, index++)
+    for await (const elem of this as AsyncIterable<T>) {
+      result = folder.nextState(result, elem, index++)
       if (optPred(result, index, folder.escape)) {
         return folder.stateToResult(result)
       }
@@ -304,12 +304,12 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    */
   async forEach(effect?: Effect<T>): Promise<void> {
     if (effect === undefined) {
-      for await (const elem of this);
+      for await (const elem of this as AsyncIterable<T>);
       return
     }
 
     let index = 0
-    for await (const elem of this) effect(elem, index++)
+    for await (const elem of this as AsyncIterable<T>) effect(elem, index++)
   }
 
   /**
@@ -515,7 +515,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
     if (this.isEmptyInstance) return AsyncIter.empty
 
     return this.applyCustomOperation(async function*(iterable) {
-      const iterator = (getAsyncIterator(iterable) as any) as Iterable<T>
+      const iterator = (getAsyncIterator(iterable) as any) as AsyncIterable<T>
       let index = 0
 
       for await (const elem of iterator) {
@@ -544,7 +544,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
     let result: T | NoValue = NoValue
 
     let index = 0
-    for await (const elem of this) {
+    for await (const elem of this as AsyncIterable<T>) {
       if (result === NoValue) result = elem
       else result = op(result, elem, index++)
     }
