@@ -17,7 +17,7 @@
   "author": "Arvid Nicolaas <vitoke@gmail.com>",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/vitoke/iternal"
   },
   "license": "MIT",
   "engines": {
@@ -25,7 +25,6 @@
   },
   "scripts": {
     "lint": "tslint  --project tsconfig.json -t codeFrame 'src/**/*.ts' 'test/**/*.ts'",
-    "prebuild": "rimraf dist",
     "build": "tsc --module commonjs && rollup -c rollup.config.ts && typedoc src/lib/public",
     "start": "rollup -c rollup.config.ts -w",
     "test": "jest --coverage",
@@ -36,8 +35,15 @@
     "commit": "git-cz",
     "semantic-release": "semantic-release",
     "semantic-release-prepare": "ts-node tools/semantic-release-prepare",
-    "precommit": "lint-staged",
     "travis-deploy-once": "travis-deploy-once"
+  },
+  "husky": {
+    "hooks": {
+      "prebuild": "rimraf dist",
+      "prepush": "npm run test:prod && npm run build",
+      "precommit": "lint-staged",
+      "commitmsg": "commitlint -E HUSKY_GIT_PARAMS"
+    }
   },
   "lint-staged": {
     "{src,test}/**/*.ts": [
