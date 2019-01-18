@@ -117,7 +117,7 @@ function getProduct(array) {
 }
 ```
 
-Here we have written 2 functions that can get the sum and average of an array of integers. But what if we want both?
+Here we have written 2 functions that can get the sum and product of an array of integers. But what if we want both?
 We can write something like `const [sum, product] = [getSum(someArray), getProduct(someArray)]` but this will process
 the array twice. That should not be necessary.
 
@@ -218,7 +218,7 @@ We can express the `return` condition in `iternal` by supplying an `escape` pred
 const efficientProduct = MonoFolder.create(0, (state, value) => state * value, state => state === 0)
 ```
 
-Now, we can run this folder on infinite streams (but only if they somewhere meet the escape contidion):
+Now, we can run this folder on infinite streams (but only if they somewhere meet the escape condition):
 
 ```typescript
 Iter.range(-100).fold(efficientProduct)
