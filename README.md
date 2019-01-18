@@ -255,7 +255,7 @@ const createObject = Folder.create({}, (state, key) => {
 const result1 = Fold.fold(['a', 'b'], createObject)
 > result1 = { a: 'init', b: 'init' }
 
-const result2 = Fold.fold(['c', createObject])
+const result2 = Fold.fold(['c'], createObject)
 > result2 = { a: 'init', b: 'init', c: 'init' }
 ```
 
@@ -278,7 +278,7 @@ const fixedCreateObject = Folder.create(() => ({}), (state, key) => {
 const result1 = Fold.fold(['a', 'b'], fixedCreateObject)
 > result1 = { a: 'init', b: 'init' }
 
-const result2 = Fold.fold(['c', fixedCreateObject])
+const result2 = Fold.fold(['c'], fixedCreateObject)
 > result2 = { c: 'init' }
 ```
 
