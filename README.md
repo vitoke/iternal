@@ -199,7 +199,7 @@ const sumIsPrime2 = sumFolder.mapResult(isPrime)
 #### Intermediate return
 
 In `iternal` you can define an 'escape' condition, indicating that the state will never change, and thus iteration can be
-interrupted.
+interrupted. Let's look at the following `for` loop:
 
 ```typescript
 function getEfficientProduct(array) {
@@ -224,8 +224,9 @@ Now, we can run this folder on infinite streams (but only if they somewhere meet
 Iter.range(-100).fold(efficientProduct)
 >> returns 0
 
+// We use the 'inefficient' productFolder we defined earlier
 Iter.range(-100).fold(productFolder)
->> never returns
+>> never returns, since it has no escape
 ```
 
 #### Using mutable state
