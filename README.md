@@ -292,4 +292,8 @@ This quick tutorial only scratches the surface of what is possible, since there 
 interface that provides almost the same API as `Iter` but then for asynchronous iterables. The possibilities
 are literally endless :)
 
+## Author
+
+Arvid Nicolaas
+
 # Have fun!
