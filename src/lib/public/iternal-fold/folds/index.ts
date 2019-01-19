@@ -19,8 +19,9 @@ export namespace Folds {
    * result: '123'
    * ```
    */
-  export const stringAppend: Folder<any, string> = Folder.create('', (state, elem) =>
-    state.concat(String(elem))
+  export const stringAppend: Folder<any, string> = Folder.create(
+    '',
+    (state, elem) => state.concat(String(elem))
   )
 
   /**
@@ -31,8 +32,9 @@ export namespace Folds {
    * result: '321'
    * ```
    */
-  export const stringPrepend: Folder<any, string> = Folder.create('', (state, elem) =>
-    String(elem).concat(state)
+  export const stringPrepend: Folder<any, string> = Folder.create(
+    '',
+    (state, elem) => String(elem).concat(state)
   )
 
   /**
@@ -43,7 +45,10 @@ export namespace Folds {
    * result: 3
    * ```
    */
-  export const count: Folder<any, number> = Folder.create(0, (_, __, index) => index + 1)
+  export const count: Folder<any, number> = Folder.create(
+    0,
+    (_, __, index) => index + 1
+  )
 
   /**
    * Returns a folder that takes tuple elements of [string, V] and returns an object with those keys and values.
@@ -56,7 +61,10 @@ export namespace Folds {
    * result: { foo: 1, bar: true}
    * ```
    */
-  export function toObject<V>(target?: {}): Folder<[string, V], { [key: string]: V }> {
+  export function toObject<V>(target?: {}): Folder<
+    [string, V],
+    { [key: string]: V }
+  > {
     return Folder.create<[string, V], { [key: string]: V }>(
       () => target || {},
       (obj, [name, value]) => {
@@ -71,17 +79,20 @@ export namespace Folds {
    * If no value is found, it tries to get an alternative value from `otherwise`
    * @typeparam E the input element type
    * @param pred a predicate over elements E
-   * @param otherwise specifies how to deal with the potential case that this Iter is empty. There are three cases:
-   *    - not specified / undefined: If this Iter is empty, this function will throw an error
-   *    - (value: T): If this Iter is empty, it will return the given value instead
-   *    - (f: () => T): If this Iter is empty, it will return the value resulting from executing `f()`
+   * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
+   *    - not specified / undefined: If the Iterable is empty, this function will throw an error
+   *    - (value: E): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * Fold.fold(Iter.nats, Folds.find(v => v > 10))
    * result: 11
    * ```
    */
-  export function find<E>(pred: Pred<E>, otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
+  export function find<E>(
+    pred: Pred<E>,
+    otherwise: OptLazy<E> = throwFoldError
+  ): Folder<E, E> {
     return GenFolder.create<E, E | NoValue, E>(
       NoValue,
       (found, value, index) => {
@@ -99,17 +110,20 @@ export namespace Folds {
    * If no value is found, it tries to get an alternative value from `otherwise`
    * @typeparam E the input element type
    * @param pred a predicate over elements E
-   * @param otherwise specifies how to deal with the potential case that this Iter is empty. There are three cases:
-   *    - not specified / undefined: If this Iter is empty, this function will throw an error
-   *    - (value: T): If this Iter is empty, it will return the given value instead
-   *    - (f: () => T): If this Iter is empty, it will return the value resulting from executing `f()`
+   * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
+   *    - not specified / undefined: If the Iterable is empty, this function will throw an error
+   *    - (value: E): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * Fold.fold([1, 4, 2, 9, 3, 8], Folds.findLast(v => v < 8))
    * result: 3
    * ```
    */
-  export function findLast<E>(pred: Pred<E>, otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
+  export function findLast<E>(
+    pred: Pred<E>,
+    otherwise: OptLazy<E> = throwFoldError
+  ): Folder<E, E> {
     return GenFolder.create<E, E | NoValue, E>(
       NoValue,
       (found, value, index) => (pred(value, index) ? value : found),
@@ -121,17 +135,19 @@ export namespace Folds {
    * Returns a folder that returns the first element it receives.
    * If no value is received, it tries to get an alternative value from `otherwise`
    * @typeparam E the input element type
-   * @param otherwise specifies how to deal with the potential case that this Iter is empty. There are three cases:
-   *    - not specified / undefined: If this Iter is empty, this function will throw an error
-   *    - (value: T): If this Iter is empty, it will return the given value instead
-   *    - (f: () => T): If this Iter is empty, it will return the value resulting from executing `f()`
+   * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
+   *    - not specified / undefined: If the Iterable is empty, this function will throw an error
+   *    - (value: E): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * Fold.fold('abc', Folds.first())
    * result: 'a'
    * ```
    */
-  export function first<E>(otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
+  export function first<E>(
+    otherwise: OptLazy<E> = throwFoldError
+  ): Folder<E, E> {
     return find(() => true, otherwise)
   }
 
@@ -139,17 +155,19 @@ export namespace Folds {
    * Returns a folder that returns the last element it receives.
    * If no value is received, it tries to get an alternative value from `otherwise`
    * @typeparam E the input element type
-   * @param otherwise specifies how to deal with the potential case that this Iter is empty. There are three cases:
-   *    - not specified / undefined: If this Iter is empty, this function will throw an error
-   *    - (value: T): If this Iter is empty, it will return the given value instead
-   *    - (f: () => T): If this Iter is empty, it will return the value resulting from executing `f()`
+   * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
+   *    - not specified / undefined: If the Iterable is empty, this function will throw an error
+   *    - (value: E): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * Fold.fold('abc', Folds.last())
    * result: 'c'
    * ```
    */
-  export function last<E>(otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
+  export function last<E>(
+    otherwise: OptLazy<E> = throwFoldError
+  ): Folder<E, E> {
     return findLast(() => true, otherwise)
   }
 
@@ -157,17 +175,20 @@ export namespace Folds {
    * Returns a folder that returns the element received at position `index`.
    * If no such value is received, it tries to get an alternative value from `otherwise`
    * @typeparam E the input element type
-   * @param otherwise specifies how to deal with the potential case that this Iter is empty. There are three cases:
-   *    - not specified / undefined: If this Iter is empty, this function will throw an error
-   *    - (value: T): If this Iter is empty, it will return the given value instead
-   *    - (f: () => T): If this Iter is empty, it will return the value resulting from executing `f()`
+   * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
+   *    - not specified / undefined: If the Iterable is empty, this function will throw an error
+   *    - (value: E): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * Fold.fold('abcdef', Folds.elemAt(3))
    * result: 'd'
    * ```
    */
-  export function elemAt<E>(index: number, otherwise: OptLazy<E> = throwFoldError): Folder<E, E> {
+  export function elemAt<E>(
+    index: number,
+    otherwise: OptLazy<E> = throwFoldError
+  ): Folder<E, E> {
     return find((_, i) => i === index, otherwise)
   }
 
@@ -306,7 +327,10 @@ export namespace Folds {
    * ```
    */
   export function toMap<K, V>(target?: Map<K, V>): Folder<[K, V], Map<K, V>> {
-    return Folder.create(() => target || new Map(), (map, [key, value]) => map.set(key, value))
+    return Folder.create(
+      () => target || new Map(),
+      (map, [key, value]) => map.set(key, value)
+    )
   }
 
   /**
@@ -321,7 +345,10 @@ export namespace Folds {
    * ```
    */
   export function toSet<E>(target?: Set<E>): Folder<E, Set<E>> {
-    return Folder.create(() => target || new Set(), (set, value) => set.add(value))
+    return Folder.create(
+      () => target || new Set(),
+      (set, value) => set.add(value)
+    )
   }
 
   /**
@@ -335,7 +362,9 @@ export namespace Folds {
    * result: Map(3 -> ['foo', 'bar'], 4 -> ['test'])
    * ```
    */
-  export function groupBy<K, V>(keyFun: (value: V, index: number) => K): Folder<V, Dict<K, V>> {
+  export function groupBy<K, V>(
+    keyFun: (value: V, index: number) => K
+  ): Folder<V, Dict<K, V>> {
     return Folder.create(
       () => Dict.create(),
       (dict, value, index) => Dict.add(dict, keyFun(value, index), value)
@@ -383,7 +412,10 @@ export namespace Folds {
       return Folder.fixed(Histogram.create())
     }
 
-    const folder = Folder.create<E, Histogram<E>>(() => Histogram.create(), Histogram.add)
+    const folder = Folder.create<E, Histogram<E>>(
+      () => Histogram.create(),
+      Histogram.add
+    )
 
     if (sortBy === undefined) return folder
 
@@ -426,7 +458,9 @@ export namespace Folds {
    * ```
    */
   export function partition<E>(pred: Pred<E>): Folder<E, [E[], E[]]> {
-    return groupBy(pred).mapResult((map): [E[], E[]] => [map.get(true) || [], map.get(false) || []])
+    return groupBy(pred).mapResult(
+      (map): [E[], E[]] => [map.get(true) || [], map.get(false) || []]
+    )
   }
 
   /**
@@ -437,7 +471,10 @@ export namespace Folds {
    * result: 8
    * ```
    */
-  export const sum: MonoFolder<number> = MonoFolder.create(0, (state, num) => state + num)
+  export const sum: MonoFolder<number> = MonoFolder.create(
+    0,
+    (state, num) => state + num
+  )
 
   /**
    * Returns a folder that outputs the product of all received numbers
@@ -465,4 +502,121 @@ export namespace Folds {
     0,
     (avg, value, index) => avg + (value - avg) / (index + 1)
   )
+
+  /**
+   * Returns a folder that takes the first element of the iterable, and then uses the result of the `choice` function to decide
+   * whether to keep the currently chosen value, or the new element.
+   * @param choice a function taking two elements, and returning false to keep the first, and true to keep the second element
+   * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
+   *    - not specified / undefined: If the Iterable is empty, this function will throw an error
+   *    - (value: E): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   * @example
+   * ```typescript
+   * Fold.fold(['abCd', 'plCf', 'bcae'], Folds.choose((chosen, next) => next[2] === chosen[2]))
+   * result: 'plc'
+   * ```
+   */
+  export function choose<E>(
+    choice: (chosen: E, next: E) => boolean,
+    otherwise: OptLazy<E> = throwFoldError
+  ) {
+    return GenFolder.create<E, NoValue | E, E>(
+      NoValue,
+      (state, elem) =>
+        state === NoValue || choice(state, elem) ? elem : state,
+      state => (state === NoValue ? OptLazy.toValue(otherwise) : state)
+    )
+  }
+
+  /**
+   * Returns a folder that outputs the minimum of all received numbers
+   * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
+   *    - not specified / undefined: If the Iterable is empty, this function will throw an error
+   *    - (value: number): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => number): If the Iterable is empty, it will return the value resulting from executing `f()`
+   * @example
+   * ```typescript
+   * Fold.fold([3, 1, 4], Folds.min())
+   * result: 1
+   * ```
+   */
+  export function min(
+    otherwise: OptLazy<number> = throwFoldError
+  ): MonoFolder<number> {
+    return choose((chosen, next) => next < chosen, otherwise)
+  }
+
+  /**
+   * Returns a folder that outputs the maximum of all received numbers
+   * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
+   *    - not specified / undefined: If the Iterable is empty, this function will throw an error
+   *    - (value: number): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => number): If the Iterable is empty, it will return the value resulting from executing `f()`
+   * @example
+   * ```typescript
+   * Fold.fold([3, 1, 4], Folds.max())
+   * result: 4
+   * ```
+   */
+  export function max(
+    otherwise: OptLazy<number> = throwFoldError
+  ): MonoFolder<number> {
+    return choose((chosen, next) => next > chosen, otherwise)
+  }
+
+  /**
+   * Returns a folder that performs the `toNumber` function on each element, and returns the element for which the result
+   * of `toNumber` returned the minimum value.
+   * @param toNumber a function taking an element an returning a number to compare
+   * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
+   *    - not specified / undefined: If the Iterable is empty, this function will throw an error
+   *    - (value: E): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   */
+  export function minBy<E>(
+    toNumber: (value: E) => number,
+    otherwise: OptLazy<E> = throwFoldError
+  ): MonoFolder<E> {
+    return GenFolder.create<
+      E,
+      undefined | { minElem: E; minNumber: number },
+      E
+    >(
+      undefined,
+      (state, elem) => {
+        const elemNumber = toNumber(elem)
+
+        if (state === undefined) {
+          return { minElem: elem, minNumber: elemNumber }
+        }
+
+        if (elemNumber < state.minNumber) {
+          state.minElem = elem
+          state.minNumber = elemNumber
+        }
+
+        return state
+      },
+      state =>
+        state === undefined ? OptLazy.toValue(otherwise) : state.minElem
+    )
+  }
+
+  /**
+   * Returns a folder that performs the `toNumber` function on each element, and returns the element for which the result
+   * of `toNumber` returned the maximum value.
+   * @param toNumber a function taking an element an returning a number to compare
+   * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
+   *    - not specified / undefined: If the Iterable is empty, this function will throw an error
+   *    - (value: E): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   */
+  export function maxBy<E>(
+    toNumber: (value: E) => number,
+    otherwise: OptLazy<E> = throwFoldError
+  ): MonoFolder<E> {
+    const negativeToNumber = (v: E) => -toNumber(v)
+    return minBy(negativeToNumber, otherwise)
+  }
 }

@@ -4,7 +4,10 @@ import { Folder, Iter, Folds, Fold } from '../src/lib/public/iternal'
 const ExpectThrow = Symbol()
 type ExpectThrow = typeof ExpectThrow
 
-const compare = <I, O>(folder: Folder<I, O>, ...is: [Iterable<I>, O | ExpectThrow][]) =>
+const compare = <I, O>(
+  folder: Folder<I, O>,
+  ...is: [Iterable<I>, O | ExpectThrow][]
+) =>
   is.forEach(([i, o]) => {
     if (o === ExpectThrow) {
       return expect(() => Fold.fold(i, folder)).toThrow()
@@ -88,7 +91,12 @@ describe('Fold', () => {
   })
 
   test('count', () => {
-    compare<any, number>(Folds.count, ['', 0], ['a', 1], [Iter.range(0, 50), 50])
+    compare<any, number>(
+      Folds.count,
+      ['', 0],
+      ['a', 1],
+      [Iter.range(0, 50), 50]
+    )
   })
 
   test('elemAt', () => {
@@ -99,8 +107,20 @@ describe('Fold', () => {
       ['ab', 'b'],
       ['abc', 'b']
     )
-    compare(Folds.elemAt(1, 'X'), ['', 'X'], ['a', 'X'], ['ab', 'b'], ['abc', 'b'])
-    compare(Folds.elemAt(1, () => 'X'), ['', 'X'], ['a', 'X'], ['ab', 'b'], ['abc', 'b'])
+    compare(
+      Folds.elemAt(1, 'X'),
+      ['', 'X'],
+      ['a', 'X'],
+      ['ab', 'b'],
+      ['abc', 'b']
+    )
+    compare(
+      Folds.elemAt(1, () => 'X'),
+      ['', 'X'],
+      ['a', 'X'],
+      ['ab', 'b'],
+      ['abc', 'b']
+    )
   })
 
   test('every', () => {
@@ -141,9 +161,27 @@ describe('Fold', () => {
   })
 
   test('find', () => {
-    compare(Folds.find(isEven), [[], ExpectThrow], [[1], ExpectThrow], [[0], 0], [[1, 3, 4], 4])
-    compare(Folds.find(isEven, -10), [[], -10], [[1], -10], [[0], 0], [[1, 3, 4], 4])
-    compare(Folds.find(isEven, () => -10), [[], -10], [[1], -10], [[0], 0], [[1, 3, 4], 4])
+    compare(
+      Folds.find(isEven),
+      [[], ExpectThrow],
+      [[1], ExpectThrow],
+      [[0], 0],
+      [[1, 3, 4], 4]
+    )
+    compare(
+      Folds.find(isEven, -10),
+      [[], -10],
+      [[1], -10],
+      [[0], 0],
+      [[1, 3, 4], 4]
+    )
+    compare(
+      Folds.find(isEven, () => -10),
+      [[], -10],
+      [[1], -10],
+      [[0], 0],
+      [[1, 3, 4], 4]
+    )
   })
 
   test('findLast', () => {
@@ -154,8 +192,20 @@ describe('Fold', () => {
       [[0], 0],
       [[0, 2, 3, 4], 4]
     )
-    compare(Folds.findLast(isEven, -10), [[], -10], [[1], -10], [[0], 0], [[0, 2, 3, 4], 4])
-    compare(Folds.findLast(isEven, () => -10), [[], -10], [[1], -10], [[0], 0], [[0, 2, 3, 4], 4])
+    compare(
+      Folds.findLast(isEven, -10),
+      [[], -10],
+      [[1], -10],
+      [[0], 0],
+      [[0, 2, 3, 4], 4]
+    )
+    compare(
+      Folds.findLast(isEven, () => -10),
+      [[], -10],
+      [[1], -10],
+      [[0], 0],
+      [[0, 2, 3, 4], 4]
+    )
   })
 
   test('histogram', () => {
@@ -214,6 +264,62 @@ describe('Fold', () => {
 
   test('stringPrepend', () => {
     compare(Folds.stringPrepend, ['', ''], ['a', 'a'], ['abc', 'cba'])
+  })
+
+  test('choose', () => {
+    compare(
+      Folds.choose((chosen, next) => isEven(chosen + next)),
+      [[], ExpectThrow],
+      [[0], 0],
+      [[0, 1], 0],
+      [[0, 2], 2],
+      [[0, 2, 3], 2],
+      [[1, 3, 4, 7, 2], 7]
+    )
+  })
+
+  test('min', () => {
+    compare(
+      Folds.min(),
+      [[], ExpectThrow],
+      [[0], 0],
+      [[5, 3], 3],
+      [[5, 4, 3], 3],
+      [[5, 3, 4], 3]
+    )
+  })
+
+  test('max', () => {
+    compare(
+      Folds.max(),
+      [[], ExpectThrow],
+      [[0], 0],
+      [[5, 3], 5],
+      [[5, 4, 3], 5],
+      [[3, 5, 4], 5]
+    )
+  })
+
+  test('minBy', () => {
+    compare(
+      Folds.minBy((v: string) => v.length),
+      [[], ExpectThrow],
+      [[''], ''],
+      [['ta', 't'], 't'],
+      [['taa', 'ta', 't'], 't'],
+      [['ta', 't', 'taa'], 't']
+    )
+  })
+
+  test('maxBy', () => {
+    compare(
+      Folds.maxBy((v: string) => v.length),
+      [[], ExpectThrow],
+      [[''], ''],
+      [['ta', 't'], 'ta'],
+      [['taa', 'ta', 't'], 'taa'],
+      [['ta', 't', 'taa'], 'taa']
+    )
   })
 
   test('toObject', () => {
