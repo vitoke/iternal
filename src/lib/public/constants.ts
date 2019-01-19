@@ -68,7 +68,7 @@ export type Effect<E> = IterFun<E, void>
 export type MapFun<A, B> = IterFun<A, B>
 
 /**
- * A functio that takes an element of type A and its index, and returns an element of type B or undefined.
+ * A function that takes an element of type A and its index, and returns an element of type B or undefined.
  */
 export type CollectFun<A, B> = IterFun<A, B | undefined>
 
