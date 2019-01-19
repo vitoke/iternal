@@ -95,7 +95,7 @@ export const Dict = {
   create<K, V>(): Dict<K, V> {
     return new Map()
   },
-  add<K, V>(dict: Dict<K, V>, key: K, value: V) {
+  add<K, V>(dict: Dict<K, V>, key: K, value: V): Dict<K, V> {
     const entries = dict.get(key)
     if (entries === undefined) dict.set(key, [value])
     else entries.push(value)
@@ -113,7 +113,7 @@ export const UniqueDict = {
   create<K, V>(): UniqueDict<K, V> {
     return new Map()
   },
-  add<K, V>(dict: UniqueDict<K, V>, key: K, value: V) {
+  add<K, V>(dict: UniqueDict<K, V>, key: K, value: V): UniqueDict<K, V> {
     const entrySet = dict.get(key)
     if (entrySet === undefined) dict.set(key, new Set().add(value))
     else entrySet.add(value)
@@ -129,7 +129,7 @@ export const Histogram = {
   create<K>(): Histogram<K> {
     return new Map()
   },
-  add<K>(hist: Histogram<K>, value: K) {
+  add<K>(hist: Histogram<K>, value: K): Histogram<K> {
     const count = hist.get(value) || 0
     hist.set(value, count + 1)
     return hist
