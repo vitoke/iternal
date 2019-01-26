@@ -16,11 +16,32 @@ https://vitoke.github.io/iternal/globals.html
 ### Simple
 
 ```typescript
-import { Fold, Folds } from 'iternal'
+import { Iter, Fold, Folds } from 'iternal'
 
-console.log('The average: ', Fold.fold([0, 8, 6, 7], Folds.average))
+console.log(
+  Iter.of(1, 3, 5)
+    .map(v => v * 2)
+    .repeat(2)
+    .toArray()
+)
 
-result: The average: 5.25
+> result: [2, 6, 10, 2, 6, 10]
+
+
+console.log(
+  'The min and max value: ',
+  Fold.fold([8, 3, 6, 7], Folds.range)
+)
+
+> result: The min and max value:  [ 3, 8 ]
+
+
+console.log(
+  'Average word length:',
+  Fold.fold(['This', 'is', 'a', 'test'], Folds.average.mapInput(w => w.length))
+)
+
+> result: Average word length: 2.75
 ```
 
 ### Advanced
@@ -28,22 +49,38 @@ result: The average: 5.25
 ```typescript
 import { Iter, Fold, Folds } from 'iternal'
 
-Iter.randomInt(0, 100)
-  .repeat()
-  .foldIter(Fold.combine(Folds.last(), Folds.sum, Folds.product, Folds.average))
-  .map(
-    ([value, sum, prod, avg]) =>
-      `The latest value is ${value}. The current sum is ${sum}, the product ${prod} and the average ${avg}`
-  )
-  .take(5)
-  .forEach(v => console.log(v))
+// rangeBy returns the values for which the function gives the minimum and maximum value
+const shortestAndLongestStringFolder = Folds.rangeBy(w => w.length)
 
-result: (example output)
-The latest value is 49. The current sum is 49, the product 49 and the average 49
-The latest value is 66. The current sum is 115, the product 3234 and the average 57.5
-The latest value is 3. The current sum is 118, the product 9702 and the average 39.33333333333333
-The latest value is 54. The current sum is 172, the product 523908 and the average 43
-The latest value is 99. The current sum is 271, the product 51866892 and the average 54.2
+// mapInput converts some input type into a type the folder understands
+const averageStringLengthFolder = Folds.average.mapInput(w => w.length)
+
+// We construct a string from the combination of the above two folders
+const verySpecificFolder = Fold.combineWith(
+  ([shortest, longest], avgLen) =>
+    `Shortest word: ${shortest}, longest word: ${longest}, average length: ${avgLen}`,
+  shortestAndLongestStringFolder,
+  averageStringLengthFolder
+)
+
+// We create an Iter iterable from a string split
+const words = Iter.fromIterable('This is a very normal sentence'.split(' '))
+
+// Get the final result at once
+console.log( words.fold(verySpecificFolder) )
+
+> result: Shortest word: a, longest word: sentence, average length: 4.166666666666666
+
+// Get the results for each new word
+words.foldIter(verySpecificFolder).forEach(v => console.log(v))
+
+> result:
+Shortest word: This, longest word: This, average length: 4
+Shortest word: is, longest word: This, average length: 3
+Shortest word: a, longest word: This, average length: 2.3333333333333335
+Shortest word: a, longest word: This, average length: 2.75
+Shortest word: a, longest word: normal, average length: 3.4
+Shortest word: a, longest word: sentence, average length: 4.166666666666666
 ```
 
 ## Motivation

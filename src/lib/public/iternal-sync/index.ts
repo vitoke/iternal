@@ -155,7 +155,10 @@ export class Iter<T> implements Iterable<T> {
    * result: (2, 4, 16, 256, ...)
    * ```
    */
-  static generate<E>(init: E, next: (current: E, index: number) => E | undefined): Iter<E> {
+  static generate<E>(
+    init: E,
+    next: (current: E, index: number) => E | undefined
+  ): Iter<E> {
     return Iter.fromIterator(function*() {
       let value = init
       let index = 0
@@ -292,7 +295,10 @@ export class Iter<T> implements Iterable<T> {
    * result: (8, 2, 5, 3, 5, 1, 7, ...)
    * ```
    */
-  static randomInt(min = Number.MIN_VALUE, max = Number.MAX_VALUE): Iter<number> {
+  static randomInt(
+    min = Number.MIN_VALUE,
+    max = Number.MAX_VALUE
+  ): Iter<number> {
     return Iter.fromLazy(() => randomInt(min, max))
   }
 
@@ -381,7 +387,9 @@ export class Iter<T> implements Iterable<T> {
    * result (example): 'foo2,foo3'
    * ```
    */
-  applyCustomOperation<R>(createIterator: (iterable: Iterable<T>) => Iterator<R>): Iter<R> {
+  applyCustomOperation<R>(
+    createIterator: (iterable: Iterable<T>) => Iterator<R>
+  ): Iter<R> {
     return Iter.fromIterator(() => createIterator(this))
   }
 
@@ -424,10 +432,10 @@ export class Iter<T> implements Iterable<T> {
       result = folder.nextState(result, e, index++)
 
       if (optPred(result, index, folder.escape)) {
-        return folder.stateToResult(result)
+        return folder.stateToResult(result, index)
       }
     }
-    return folder.stateToResult(result)
+    return folder.stateToResult(result, index)
   }
 
   /**
@@ -447,7 +455,7 @@ export class Iter<T> implements Iterable<T> {
 
       for (const e of iterable) {
         result = folder.nextState(result, e, index++)
-        yield folder.stateToResult(result)
+        yield folder.stateToResult(result, index)
         if (optPred(result, index, folder.escape)) return
       }
     })
@@ -533,6 +541,7 @@ export class Iter<T> implements Iterable<T> {
       }
     })
   }
+
   /**
    * Returns an Iter with the result of applying the given collectFun to each element of this Iter, unless the result is undefined, in that case the element is skipped.
    * This function is a combination of map and filter.
@@ -777,7 +786,8 @@ export class Iter<T> implements Iterable<T> {
     other1Iterable: Iterable<O>,
     ...otherIterables: Iterable<any>[]
   ): Iter<[T, O, ...unknown[]]> {
-    const toTuple = (...args: [T, O, ...unknown[]]): [T, O, ...unknown[]] => args
+    const toTuple = (...args: [T, O, ...unknown[]]): [T, O, ...unknown[]] =>
+      args
 
     return this.zipWith(toTuple, other1Iterable, ...otherIterables)
   }
@@ -905,8 +915,12 @@ export class Iter<T> implements Iterable<T> {
    * ```
    */
   interleaveAll(...otherIterables: NonEmpty<Iterable<T>>): Iter<T> {
-    const zipped = (this.zipAll(...otherIterables) as unknown) as Iter<(T | undefined)[]>
-    return Iter.flatten<T | undefined>(zipped).patchElem(undefined, 1) as Iter<T>
+    const zipped = (this.zipAll(...otherIterables) as unknown) as Iter<
+      (T | undefined)[]
+    >
+    return Iter.flatten<T | undefined>(zipped).patchElem(undefined, 1) as Iter<
+      T
+    >
   }
 
   /**
@@ -919,11 +933,13 @@ export class Iter<T> implements Iterable<T> {
    * ```
    */
   interleaveRound(...otherIterables: NonEmpty<Iterable<T>>): Iter<T> {
-    const repeatedIterables = otherIterables.map(it => Iter.fromIterable(it).repeat()) as NonEmpty<
-      Iter<T>
-    >
+    const repeatedIterables = otherIterables.map(it =>
+      Iter.fromIterable(it).repeat()
+    ) as NonEmpty<Iter<T>>
 
-    const iterArrayT = (this.repeat().zip(...repeatedIterables) as unknown) as Iter<T[]>
+    const iterArrayT = (this.repeat().zip(
+      ...repeatedIterables
+    ) as unknown) as Iter<T[]>
 
     return Iter.flatten(iterArrayT)
   }
@@ -1096,7 +1112,7 @@ export class Iter<T> implements Iterable<T> {
    * ```
    */
   sample(nth: number): Iter<T> {
-    return this.patchWhere((_, i) => i % nth === 0, nth, e => Iter.of(e))
+    return this.filter((_, index) => index % nth === 0)
   }
 
   /**
@@ -1115,7 +1131,8 @@ export class Iter<T> implements Iterable<T> {
    */
   monitor(
     tag: string = '',
-    effect: MonitorEffect<T> = (v, i, t) => console.log(`${t || ''}[${i}]: ${v}`)
+    effect: MonitorEffect<T> = (v, i, t) =>
+      console.log(`${t || ''}[${i}]: ${v}`)
   ): Iter<T> {
     if (this.isEmptyInstance) return this
 
@@ -1207,7 +1224,10 @@ export class Iter<T> implements Iterable<T> {
     sepIter: Iterable<T> = Iter.empty,
     endIter: Iterable<T> = Iter.empty
   ): Iter<T> {
-    return Iter.fromIterable(startIter).concat(this.intersperse(sepIter), endIter)
+    return Iter.fromIterable(startIter).concat(
+      this.intersperse(sepIter),
+      endIter
+    )
   }
 
   /**
@@ -1250,7 +1270,7 @@ export class Iter<T> implements Iterable<T> {
     }
 
     return this.applyCustomOperation(function*(iterable) {
-      let i = 0
+      let index = 0
       let skip = 0
       let remain = amount === undefined ? 1 : amount
 
@@ -1259,11 +1279,11 @@ export class Iter<T> implements Iterable<T> {
 
         if (skip > 0) skip--
         else {
-          if (remain > 0 && pred(elem, i)) {
+          if (remain > 0 && pred(elem, index)) {
             remain--
 
             if (insert !== undefined) {
-              const insertIterable = insert(elem, i)
+              const insertIterable = insert(elem, index)
               yield* checkPureIterable(insertIterable)
             }
             skip = remove
@@ -1272,7 +1292,7 @@ export class Iter<T> implements Iterable<T> {
           if (skip <= 0) yield elem
           else skip--
         }
-        i++
+        index++
       }
     })
   }
@@ -1290,23 +1310,24 @@ export class Iter<T> implements Iterable<T> {
    * result: ('aQWc')
    * ```
    */
-  patchAt(index: number, remove: number, insert?: (elem?: T) => Iterable<T>): Iter<T> {
+  patchAt(
+    index: number,
+    remove: number,
+    insert?: (elem?: T) => Iterable<T>
+  ): Iter<T> {
     if (this.isEmptyInstance) {
       if (insert === undefined) return Iter.empty
       return Iter.fromIterable(insert())
     }
-
     return this.applyCustomOperation(function*(iterable) {
       let i = 0
       let skip = 0
-
       function* ins(elem?: T) {
         if (insert !== undefined) {
           const insertIterable = insert(elem)
           yield* checkPureIterable(insertIterable)
         }
       }
-
       if (index < 0) {
         yield* ins()
         skip = remove
@@ -1339,7 +1360,12 @@ export class Iter<T> implements Iterable<T> {
    * result: 'a--c--a'
    * ```
    */
-  patchElem(elem: T, remove: number, insert?: Iterable<T>, amount?: number): Iter<T> {
+  patchElem(
+    elem: T,
+    remove: number,
+    insert?: Iterable<T>,
+    amount?: number
+  ): Iter<T> {
     return this.patchWhere(
       e => e === elem,
       remove,

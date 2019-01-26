@@ -5,6 +5,7 @@
 import { NoValue } from '../../../private/iternal-common'
 import { Dict, Histogram, OptLazy, Pred, UniqueDict } from '../../constants'
 import { Folder, GenFolder, MonoFolder } from '../gen-folder'
+import { combine } from '../../../private/iternal-shared'
 
 export namespace Folds {
   function throwFoldError(): never {
@@ -150,6 +151,18 @@ export namespace Folds {
   ): Folder<E, E> {
     return find(() => true, otherwise)
   }
+
+  export function take<E>(amount: number): Folder<E, E> {
+    return find((_, index) => index <= amount)
+  }
+
+  export function drop<E>(amount: number): Folder<E, E> {
+    return find((_, index) => index >= amount)
+  }
+
+  // export function takeWhile<E>(pred: Pred<E>): Folder<E, E> {
+  //   return findLast((_, index) => index >= amount)
+  // }
 
   /**
    * Returns a folder that returns the last element it receives.
@@ -438,13 +451,17 @@ export namespace Folds {
    * result: Map(1 -> Set('a', 'b'), 2 -> Set('d', 'c'))
    * ```
    */
-  export function elementsByFreq<E>(): Folder<E, UniqueDict<number, E>> {
-    return histogram().mapResult(dict => {
-      const result = UniqueDict.create<number, E>()
-      for (const key of dict.keys()) UniqueDict.add(result, dict.get(key), key)
-      return result
-    })
-  }
+  // export function elementsByFreq<E>(): Folder<E, IUniqueDict<number, E>> {
+  //   return histogram().mapResult(
+  //     (dict: Histogram<E>): IUniqueDict<nunber, E> => {
+  //       const result: IUniqueDict<number, E> = UniqueDict.create<number, E>()
+  //       for (const key of dict.keys()) {
+  //         UniqueDict.add(result, dict.get(key), key)
+  //       }
+  //       return result
+  //     }
+  //   )
+  // }
 
   /**
    * Returns a folder that creates a tuple of element arrays based on the given `pred`.
@@ -566,6 +583,17 @@ export namespace Folds {
   }
 
   /**
+   * Returns a folder that outputs a tuple containing the minimum and maximum value of the inputs.
+   * @note throws if an empty input is received.
+   * @example
+   * ```typescript
+   * Fold.fold([4, 1, 3], Folds.range)
+   * result: [1, 4]
+   * ```
+   */
+  export const range: Folder<number, [number, number]> = combine(min(), max())
+
+  /**
    * Returns a folder that performs the `toNumber` function on each element, and returns the element for which the result
    * of `toNumber` returned the minimum value.
    * @param toNumber a function taking an element an returning a number to compare
@@ -573,6 +601,11 @@ export namespace Folds {
    *    - not specified / undefined: If the Iterable is empty, this function will throw an error
    *    - (value: E): If the Iterable is empty, it will return the given value instead
    *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   * @example
+   * ```typescript
+   * Fold.fold(['aa', 'a', 'aaa'], Folds.minBy(w => w.length))
+   * result: 'a'
+   * ```
    */
   export function minBy<E>(
     toNumber: (value: E) => number,
@@ -611,6 +644,11 @@ export namespace Folds {
    *    - not specified / undefined: If the Iterable is empty, this function will throw an error
    *    - (value: E): If the Iterable is empty, it will return the given value instead
    *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   * @example
+   * ```typescript
+   * Fold.fold(['aa', 'a', 'aaa'], Folds.maxBy(w => w.length))
+   * result: 'aaa'
+   * ```
    */
   export function maxBy<E>(
     toNumber: (value: E) => number,
@@ -618,5 +656,22 @@ export namespace Folds {
   ): MonoFolder<E> {
     const negativeToNumber = (v: E) => -toNumber(v)
     return minBy(negativeToNumber, otherwise)
+  }
+
+  /**
+   * Returns a folder that performs the `toNumber` function on each element, and returns a tuple of the elements for which
+   * the function returned the minumum and maximum values.
+   * @note throws an error when the input is empty
+   * @param toNumber a function taking an element an returning a number to compare
+   * @example
+   * ```typescript
+   * Fold.fold(['aa', 'a', 'aaa'], Folds.rangeBy(w => w.length))
+   * result: ['a', 'aaa']
+   * ```
+   */
+  export function rangeBy<E>(
+    toNumber: (value: E) => number
+  ): Folder<E, [E, E]> {
+    return combine(minBy(toNumber), maxBy(toNumber))
   }
 }

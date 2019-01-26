@@ -2,8 +2,11 @@
  * @module iternal
  */
 
-import { optPred } from '../../../private/iternal-common'
-import { AnyIterable, NonEmpty } from '../../constants'
+import {
+  combine as _combine,
+  combineWith as _combineWith
+} from '../../../private/iternal-shared'
+import { AnyIterable } from '../../constants'
 import { AsyncIter } from '../../iternal-async'
 import { Iter } from '../../iternal-sync'
 import { Folder, GenFolder } from '../gen-folder'
@@ -27,7 +30,10 @@ export namespace Fold {
    * @param iterable an iterable yielding elements of type A
    * @param folder a folder taking elements of type A and returning a result of type R
    */
-  export function foldIter<A, R>(iterable: Iterable<A>, folder: Folder<A, R>): Iter<R> {
+  export function foldIter<A, R>(
+    iterable: Iterable<A>,
+    folder: Folder<A, R>
+  ): Iter<R> {
     return Iter.fromIterable(iterable).foldIter(folder)
   }
 
@@ -38,7 +44,10 @@ export namespace Fold {
    * @param iterable an async iterable yielding elements of type A
    * @param folder a folder taking elements of type A and returning a result of type R
    */
-  export function foldAsync<A, R>(iterable: AnyIterable<A>, folder: Folder<A, R>): Promise<R> {
+  export function foldAsync<A, R>(
+    iterable: AnyIterable<A>,
+    folder: Folder<A, R>
+  ): Promise<R> {
     return AsyncIter.fromIterable(iterable).fold(folder)
   }
 
@@ -77,36 +86,7 @@ export namespace Fold {
     folder2: GenFolder<A, S2, R2>,
     ...otherFolders: Folder<A, any>[]
   ): Folder<A, GR> {
-    return GenFolder.create<A, [S, S2, ...any[]], GR>(
-      () => [
-        folder1.createInitState(),
-        folder2.createInitState(),
-        ...otherFolders.map(folder => folder.createInitState())
-      ],
-      ([state1, state2, ...otherStates], elem, index) => [
-        folder1.nextState(state1, elem, index),
-        folder2.nextState(state2, elem, index),
-        ...Iter.fromIterable(otherStates).zipWith(
-          (state, folder) => folder.nextState(state, elem, index),
-          otherFolders
-        )
-      ],
-      ([state1, state2, ...otherStates]) =>
-        combineFun(
-          folder1.stateToResult(state1),
-          folder2.stateToResult(state2),
-          ...Iter.fromIterable(otherStates).zipWith(
-            (state, folder) => folder.stateToResult(state),
-            otherFolders
-          )
-        ),
-      ([state1, state2, ...otherStates], index) =>
-        optPred(state1, index, folder1.escape) &&
-        optPred(state2, index, folder2.escape) &&
-        Iter.fromIterable(otherStates)
-          .zipWith((state, folder) => optPred(state, index, folder.escape), otherFolders)
-          .fold(andFolder)
-    )
+    return _combineWith(combineFun, folder1, folder2, ...otherFolders)
   }
 
   /**
@@ -120,33 +100,36 @@ export namespace Fold {
    * @param folder2 a Folder taking the same type of elements
    * @param otherFolders a number of Folders taking the same type of elements
    */
-  export function combine<A, R, R2>(
+  export function combine<A, R, R2, GR extends [R, R2, ...unknown[]]>(
     folder1: Folder<A, R>,
     folder2: Folder<A, R2>,
     ...otherFolders: Folder<A, unknown>[]
-  ): Folder<A, [R, R2, ...unknown[]]> {
-    return combineWith((...results) => results, folder1, folder2, ...otherFolders)
-  }
-
-  export function combineFixedWith<A, R, GR>(
-    combineFun: (...results: [R, R, ...R[]]) => GR,
-    folder1: Folder<A, R>,
-    folder2: Folder<A, R>,
-    ...otherFolders: Folder<A, R>[]
   ): Folder<A, GR> {
-    return combineWith(combineFun, folder1, folder2, ...otherFolders)
+    return _combine(folder1, folder2, ...otherFolders)
   }
 
-  export function combineFixed<A, R>(
-    folder1: Folder<A, R>,
-    ...otherFolders: NonEmpty<Folder<A, R>>
-  ): Folder<A, [R, R, ...R[]]> {
-    return combine(folder1, ...otherFolders) as Folder<A, [R, R, ...R[]]>
+  export function pipe<A, S, R, S2, R2>(
+    folder1: GenFolder<A, S, R>,
+    folder2: GenFolder<R, S2, R2>
+  ): Folder<A, R2> {
+    return GenFolder.create(
+      () => ({
+        state1: folder1.createInitState(),
+        state2: folder2.createInitState()
+      }),
+      (states, elem, index) => {
+        states.state1 = folder1.nextState(states.state1, elem, index)
+        states.state2 = folder2.nextState(
+          states.state2,
+          folder1.stateToResult(states.state1, index),
+          index
+        )
+        return states
+      },
+      ({ state2 }, index) => folder2.stateToResult(state2, index),
+      ({ state1, state2 }, index) =>
+        (folder1.escape !== undefined && folder1.escape(state1, index)) ||
+        (folder2.escape !== undefined && folder2.escape(state2, index))
+    )
   }
-
-  const andFolder: Folder<boolean, boolean> = GenFolder.create<boolean, boolean, boolean>(
-    () => true,
-    (state, value) => state && value,
-    state => state
-  )
 }

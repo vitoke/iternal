@@ -261,16 +261,16 @@ export class AsyncIter<T> implements AsyncIterable<T> {
     let result = folder.createInitState()
     let index = 0
     if (optPred(result, index, folder.escape)) {
-      return folder.stateToResult(result)
+      return folder.stateToResult(result, index)
     }
 
     for await (const elem of this as AsyncIterable<T>) {
       result = folder.nextState(result, elem, index++)
       if (optPred(result, index, folder.escape)) {
-        return folder.stateToResult(result)
+        return folder.stateToResult(result, index)
       }
     }
-    return folder.stateToResult(result)
+    return folder.stateToResult(result, index)
   }
 
   /**
@@ -291,7 +291,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
 
       for await (const e of iterable) {
         result = folder.nextState(result, e, index++)
-        yield folder.stateToResult(result)
+        yield folder.stateToResult(result, index)
         if (optPred(result, index, folder.escape)) return
       }
     })
@@ -367,7 +367,9 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 2, 2, 3, 3, 3)
    * ```
    */
-  flatMap<R>(flatMapFun: (elem: T, index: number) => AnyIterable<R>): AsyncIter<R> {
+  flatMap<R>(
+    flatMapFun: (elem: T, index: number) => AnyIterable<R>
+  ): AsyncIter<R> {
     if (this.isEmptyInstance) return AsyncIter.empty
 
     return this.applyCustomOperation(async function*(iterable) {
@@ -578,7 +580,9 @@ export class AsyncIter<T> implements AsyncIterable<T> {
   ): AsyncIter<R> {
     if (this.isEmptyInstance) return AsyncIter.empty
     if (
-      [other1Iterable, ...otherIterables].some(it => it === Iter.empty || it === AsyncIter.empty)
+      [other1Iterable, ...otherIterables].some(
+        it => it === Iter.empty || it === AsyncIter.empty
+      )
     ) {
       return AsyncIter.empty
     }
@@ -616,7 +620,11 @@ export class AsyncIter<T> implements AsyncIterable<T> {
     otherIterable1: AnyIterable<O>,
     ...otherIterables: AnyIterable<any>[]
   ): AsyncIter<[T, O, ...any[]]> {
-    const toTuple = (t: T, o: O, ...other: any[]): [T, O, ...any[]] => [t, o, ...other]
+    const toTuple = (t: T, o: O, ...other: any[]): [T, O, ...any[]] => [
+      t,
+      o,
+      ...other
+    ]
     return this.zipWith(toTuple, otherIterable1, ...otherIterables)
   }
 
@@ -686,7 +694,11 @@ export class AsyncIter<T> implements AsyncIterable<T> {
     otherIterable1: AnyIterable<O>,
     ...otherIterables: AnyIterable<any>[]
   ): AsyncIter<[T?, O?, ...any[]]> {
-    const toTuple = (t?: T, o?: O, ...other: any[]): [T?, O?, ...any[]] => [t, o, ...other]
+    const toTuple = (t?: T, o?: O, ...other: any[]): [T?, O?, ...any[]] => [
+      t,
+      o,
+      ...other
+    ]
 
     return this.zipAllWith(toTuple, otherIterable1, ...otherIterables)
   }
@@ -726,7 +738,9 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: 'aQbWcQ'
    * ```
    */
-  interleave(...otherIterables: [AnyIterable<T>, ...AnyIterable<T>[]]): AsyncIter<T> {
+  interleave(
+    ...otherIterables: [AnyIterable<T>, ...AnyIterable<T>[]]
+  ): AsyncIter<T> {
     return AsyncIter.flatten(this.zip(...otherIterables))
   }
 
@@ -740,10 +754,9 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * ```
    */
   interleaveAll(...otherIterables: NonEmpty<AnyIterable<T>>): AsyncIter<T> {
-    return AsyncIter.flatten<T | undefined>(this.zipAll(...otherIterables)).patchElem(
-      undefined,
-      1
-    ) as AsyncIter<T>
+    return AsyncIter.flatten<T | undefined>(
+      this.zipAll(...otherIterables)
+    ).patchElem(undefined, 1) as AsyncIter<T>
   }
 
   /**
@@ -756,9 +769,9 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * ```
    */
   interleaveRound(...otherIterables: NonEmpty<AnyIterable<T>>): AsyncIter<T> {
-    const its = otherIterables.map(it => AsyncIter.fromIterable(it).repeat()) as NonEmpty<
-      AsyncIter<T>
-    >
+    const its = otherIterables.map(it =>
+      AsyncIter.fromIterable(it).repeat()
+    ) as NonEmpty<AsyncIter<T>>
 
     return AsyncIter.flatten(this.repeat().zip(...its))
   }
@@ -859,7 +872,9 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * @param pred a function that take the current element, and the optional previous element and returns a boolean
    * indicating its filter status
    */
-  filterWithPrevious(pred: (current: T, previous?: T) => boolean): AsyncIter<T> {
+  filterWithPrevious(
+    pred: (current: T, previous?: T) => boolean
+  ): AsyncIter<T> {
     if (this.isEmptyInstance) return AsyncIter.empty
 
     return this.applyCustomOperation(async function*(iterable) {
@@ -951,7 +966,8 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    */
   monitor(
     tag: string = '',
-    effect: MonitorEffect<T> = (v, i, t) => console.log(`${t || ''}[${i}]: ${v}`)
+    effect: MonitorEffect<T> = (v, i, t) =>
+      console.log(`${t || ''}[${i}]: ${v}`)
   ): AsyncIter<T> {
     if (this.isEmptyInstance) return this
 
@@ -1043,7 +1059,10 @@ export class AsyncIter<T> implements AsyncIterable<T> {
     sepIter: AnyIterable<T> = AsyncIter.empty,
     endIter: AnyIterable<T> = AsyncIter.empty
   ): AsyncIter<T> {
-    return AsyncIter.fromIterable(startIter).concat(this.intersperse(sepIter), endIter)
+    return AsyncIter.fromIterable(startIter).concat(
+      this.intersperse(sepIter),
+      endIter
+    )
   }
 
   /**
@@ -1125,7 +1144,11 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: 'aQWc'
    * ```
    */
-  patchAt(index: number, remove: number, insert?: (elem?: T) => AnyIterable<T>): AsyncIter<T> {
+  patchAt(
+    index: number,
+    remove: number,
+    insert?: (elem?: T) => AnyIterable<T>
+  ): AsyncIter<T> {
     if (this.isEmptyInstance) {
       if (insert === undefined) return AsyncIter.empty
       return AsyncIter.fromIterable(insert())
@@ -1174,7 +1197,12 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: ('a--c--a')
    * ```
    */
-  patchElem(elem: T, remove: number, insert?: AnyIterable<T>, amount?: number): AsyncIter<T> {
+  patchElem(
+    elem: T,
+    remove: number,
+    insert?: AnyIterable<T>,
+    amount?: number
+  ): AsyncIter<T> {
     return this.patchWhere(
       e => e === elem,
       remove,
