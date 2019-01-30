@@ -9,7 +9,7 @@ import {
 import { AnyIterable } from '../../constants'
 import { AsyncIter } from '../../iternal-async'
 import { Iter } from '../../iternal-sync'
-import { Folder, GenFolder } from '../gen-folder'
+import { FolderT, GenFolder } from '../gen-folder'
 
 export namespace Fold {
   /**
@@ -19,7 +19,7 @@ export namespace Fold {
    * @param iterable an iterable yielding elements of type A
    * @param folder a folder taking elements of type A and returning a result of type R
    */
-  export function fold<A, R>(iterable: Iterable<A>, folder: Folder<A, R>): R {
+  export function fold<A, R>(iterable: Iterable<A>, folder: FolderT<A, R>): R {
     return Iter.fromIterable(iterable).fold(folder)
   }
 
@@ -32,7 +32,7 @@ export namespace Fold {
    */
   export function foldIter<A, R>(
     iterable: Iterable<A>,
-    folder: Folder<A, R>
+    folder: FolderT<A, R>
   ): Iter<R> {
     return Iter.fromIterable(iterable).foldIter(folder)
   }
@@ -46,7 +46,7 @@ export namespace Fold {
    */
   export function foldAsync<A, R>(
     iterable: AnyIterable<A>,
-    folder: Folder<A, R>
+    folder: FolderT<A, R>
   ): Promise<R> {
     return AsyncIter.fromIterable(iterable).fold(folder)
   }
@@ -60,7 +60,7 @@ export namespace Fold {
    */
   export function foldAsyncIter<A, R>(
     iterable: AnyIterable<A>,
-    folder: Folder<A, R>
+    folder: FolderT<A, R>
   ): AsyncIter<R> {
     return AsyncIter.fromIterable(iterable).foldIter(folder)
   }
@@ -84,8 +84,8 @@ export namespace Fold {
     combineFun: (...results: [R, R2, ...any[]]) => GR,
     folder1: GenFolder<A, S, R>,
     folder2: GenFolder<A, S2, R2>,
-    ...otherFolders: Folder<A, any>[]
-  ): Folder<A, GR> {
+    ...otherFolders: FolderT<A, any>[]
+  ): FolderT<A, GR> {
     return _combineWith(combineFun, folder1, folder2, ...otherFolders)
   }
 
@@ -101,17 +101,17 @@ export namespace Fold {
    * @param otherFolders a number of Folders taking the same type of elements
    */
   export function combine<A, R, R2, GR extends [R, R2, ...unknown[]]>(
-    folder1: Folder<A, R>,
-    folder2: Folder<A, R2>,
-    ...otherFolders: Folder<A, unknown>[]
-  ): Folder<A, GR> {
+    folder1: FolderT<A, R>,
+    folder2: FolderT<A, R2>,
+    ...otherFolders: FolderT<A, unknown>[]
+  ): FolderT<A, GR> {
     return _combine(folder1, folder2, ...otherFolders)
   }
 
   export function pipe<A, S, R, S2, R2>(
     folder1: GenFolder<A, S, R>,
     folder2: GenFolder<R, S2, R2>
-  ): Folder<A, R2> {
+  ): FolderT<A, R2> {
     return GenFolder.create(
       () => ({
         state1: folder1.createInitState(),

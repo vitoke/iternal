@@ -1,5 +1,5 @@
 import { NoValue } from '../../private/iternal-common'
-import { Folds, Folder } from '../iternal'
+import { Folds, FolderT } from '../iternal'
 
 function* sum() {
   let state = 0

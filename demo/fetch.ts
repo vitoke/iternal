@@ -1,4 +1,4 @@
-import { Iter, Fold, Folds } from '..'
+import { Iter, Fold, Folds, FolderT } from '..'
 
 // Simple
 

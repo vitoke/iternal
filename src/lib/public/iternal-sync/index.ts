@@ -23,7 +23,7 @@ import {
   Pred
 } from '../constants'
 import { AsyncIter } from '../iternal-async'
-import { Folder, MonoFun } from '../iternal-fold/gen-folder'
+import { FolderT, MonoFun } from '../iternal-fold/gen-folder'
 
 function toIterator<T>(iterable: Iterable<T>): Iterator<T> {
   return getIterator(checkPureIterable(iterable))
@@ -280,6 +280,7 @@ export class Iter<T> implements Iterable<T> {
   static random(min = 0.0, max = 1.0): Iter<number> {
     return Iter.fromLazy(() => random(min, max))
   }
+  
   /**
    * Returns an Iter yielding a random integer between min and max
    * @param min the minimum value
@@ -424,7 +425,7 @@ export class Iter<T> implements Iterable<T> {
    * result: 9
    * ```
    */
-  fold<R>(folder: Folder<T, R>): R {
+  fold<R>(folder: FolderT<T, R>): R {
     let result = folder.createInitState()
     let index = 0
 
@@ -448,7 +449,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (1, 4, 8)
    * ```
    */
-  foldIter<R>(folder: Folder<T, R>): Iter<R> {
+  foldIter<R>(folder: FolderT<T, R>): Iter<R> {
     return this.applyCustomOperation(function*(iterable) {
       let result = folder.createInitState()
       let index = 0

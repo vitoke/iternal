@@ -1,4 +1,4 @@
-import { GenFolder, Folder } from '../../public/iternal-fold/gen-folder'
+import { GenFolder, FolderT } from '../../public/iternal-fold/gen-folder'
 import { Iter } from '../../public/iternal-sync'
 import { optPred } from '../iternal-common'
 
@@ -6,8 +6,8 @@ export function combineWith<A, S, R, S2, R2, GR>(
   combineFun: (...results: [R, R2, ...any[]]) => GR,
   folder1: GenFolder<A, S, R>,
   folder2: GenFolder<A, S2, R2>,
-  ...otherFolders: Folder<A, any>[]
-): Folder<A, GR> {
+  ...otherFolders: FolderT<A, any>[]
+): FolderT<A, GR> {
   return GenFolder.create<A, [S, S2, ...any[]], GR>(
     () => [
       folder1.createInitState(),
@@ -44,10 +44,10 @@ export function combineWith<A, S, R, S2, R2, GR>(
 }
 
 export function combine<A, R, R2, GR extends [R, R2, ...unknown[]]>(
-  folder1: Folder<A, R>,
-  folder2: Folder<A, R2>,
-  ...otherFolders: Folder<A, unknown>[]
-): Folder<A, GR> {
+  folder1: FolderT<A, R>,
+  folder2: FolderT<A, R2>,
+  ...otherFolders: FolderT<A, unknown>[]
+): FolderT<A, GR> {
   return combineWith<A, any, R, any, R2, GR>(
     (...results) => results as GR,
     folder1,
@@ -56,7 +56,7 @@ export function combine<A, R, R2, GR extends [R, R2, ...unknown[]]>(
   )
 }
 
-export const andFolder: Folder<boolean, boolean> = GenFolder.create<
+export const andFolder: FolderT<boolean, boolean> = GenFolder.create<
   boolean,
   boolean,
   boolean

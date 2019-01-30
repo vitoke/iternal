@@ -1,11 +1,11 @@
 import { isEven } from './test-utils'
-import { Folder, Iter, Folds, Fold } from '../src/lib/public/iternal'
+import { FolderT, Iter, Folds, Fold } from '../src/lib/public/iternal'
 
 const ExpectThrow = Symbol()
 type ExpectThrow = typeof ExpectThrow
 
 const compare = <I, O>(
-  folder: Folder<I, O>,
+  folder: FolderT<I, O>,
   ...is: [Iterable<I>, O | ExpectThrow][]
 ) =>
   is.forEach(([i, o]) => {

@@ -16,7 +16,25 @@ import {
  * @typeparam A the input element type
  * @typeparam R the result type
  */
-export type Folder<A, R> = GenFolder<A, any, R>
+// export type FolderT<A, R> = GenFolder<A, any, R>
+export interface FolderT<A, R> extends GenFolder<A, any, R> {}
+
+function id(v: any) {
+  return v
+}
+function alwaysTrue() {
+  return true
+}
+const defaultMonitorEffect: MonitorEffect<[any, any]> = (
+  values: [any, any],
+  index: number,
+  tag?: string
+) => {
+  console.log(
+    `${tag || ''}[${index}]: input:${values[0]} prevState:${values[1]}`
+  )
+}
+
 export const Folder = {
   /**
    * Creates a new Folder object from element type A to result type R
@@ -30,16 +48,11 @@ export const Folder = {
     initState: OptLazy<R>,
     nextState: FoldFun<A, R>,
     escape?: Pred<R>
-  ): Folder<A, R> {
-    return GenFolder.create(
-      OptLazy.toLazy(initState),
-      nextState,
-      v => v,
-      escape
-    )
+  ): FolderT<A, R> {
+    return GenFolder.create(OptLazy.toLazy(initState), nextState, id, escape)
   },
-  fixed<R>(result: R): Folder<any, R> {
-    return Folder.create(result, () => result, () => true)
+  fixed<R>(result: R): FolderT<any, R> {
+    return Folder.create(result, () => result, alwaysTrue)
   }
 }
 
@@ -53,7 +66,7 @@ export type MonoFun<A> = FoldFun<A, A>
  * A Folder that has the same input and result type
  * @typeparam A the input and result type
  */
-export type MonoFolder<A> = Folder<A, A>
+export type MonoFolder<A> = FolderT<A, A>
 export const MonoFolder = {
   /**
    * Creates a new monoid-like MonoFolder object taking and generating elements of type A
@@ -127,11 +140,15 @@ export class GenFolder<A, S, R> {
     }
   }
 
+  /**
+   * Performs given `monitorEffect` for each input element. By default does a console.log with the given `tag`.
+   * @param tag a tag to use with logging
+   * @param monitorEffect the effect to perform for each input element
+   */
   monitorInput(
     tag: string = '',
-    monitorEffect: MonitorEffect<[A, S]> = ([e, s], i, t) =>
-      console.log(`${t || ''}[${i}]: input:${e} prevState:${s}`)
-  ): Folder<A, R> {
+    monitorEffect: MonitorEffect<[A, S]> = defaultMonitorEffect
+  ): FolderT<A, R> {
     if (this.monitorEffect === undefined) {
       this.monitorEffect = (input, index) => monitorEffect(input, index, tag)
     } else {
@@ -149,7 +166,7 @@ export class GenFolder<A, S, R> {
    * @typeparam R2 the new output type
    * @param mapFun a function from current output type R to new output type R2
    */
-  mapResult<R2>(mapFun: (result: R) => R2): Folder<A, R2> {
+  mapResult<R2>(mapFun: (result: R) => R2): FolderT<A, R2> {
     return new GenFolder(
       this.createInitState,
       this.nextState,
@@ -158,7 +175,11 @@ export class GenFolder<A, S, R> {
     )
   }
 
-  prependInput(...elems: NonEmpty<A>): Folder<A, R> {
+  /**
+   * Returns a GenFolder where the given `elems` are prepended to the input further received.
+   * @param elems the elements to prepent
+   */
+  prependInput(...elems: NonEmpty<A>): FolderT<A, R> {
     return new GenFolder(
       () => {
         let state = this.createInitState()
@@ -175,7 +196,13 @@ export class GenFolder<A, S, R> {
     )
   }
 
-  appendInput(...elems: NonEmpty<A>): Folder<A, R> {
+  /**
+   * Returns a GenFolder where the given `elems` are appended to the input received.
+   * Note: since the appending happens when the state is retrieved, getting the result
+   * multiple times can give unpredictable results.
+   * @param elems the elements to prepent
+   */
+  appendInput(...elems: NonEmpty<A>): FolderT<A, R> {
     return new GenFolder(
       this.createInitState,
       this.nextState,
@@ -192,11 +219,15 @@ export class GenFolder<A, S, R> {
     )
   }
 
-  filterInput(filterFun: Pred<A>): Folder<A, R> {
+  /**
+   * Returns a GenFolder where the input is filtered according to the given `pred` predicate.
+   * @param pred a predicate over input elements
+   */
+  filterInput(pred: Pred<A>): FolderT<A, R> {
     return GenFolder.create(
       () => ({ state: this.createInitState(), virtualIndex: 0 }),
       (combinedState, elem, index) => {
-        if (filterFun(elem, index)) {
+        if (pred(elem, index)) {
           combinedState.state = this.nextState(
             combinedState.state,
             elem,
@@ -211,7 +242,12 @@ export class GenFolder<A, S, R> {
     )
   }
 
-  mapInput<A2>(mapFun: MapFun<A2, A>): Folder<A2, R> {
+  /**
+   * Returns a GenFolder where the input is mapped from a source type A2 to the expected input elements of type A.
+   * @typeparam A2 the new source/input type
+   * @param mapFun a function mapping from the new input type A2 to the expected input type A
+   */
+  mapInput<A2>(mapFun: MapFun<A2, A>): FolderT<A2, R> {
     return new GenFolder<A2, S, R>(
       this.createInitState,
       (state, elem, index) => this.nextState(state, mapFun(elem, index), index),
@@ -229,21 +265,38 @@ export class GenFolder<A, S, R> {
     )
   }
 
-  takeInput(amount: number): Folder<A, R> {
+  /**
+   * Returns a GenFolder that only processes the initial `amount` values of the input.
+   * @param amount the amount of input values to process
+   */
+  takeInput(amount: number): FolderT<A, R> {
     return this.filterInput((_, index) => index < amount).withEscape(
       (_, index) => index >= amount
     )
   }
 
-  dropInput(amount: number): Folder<A, R> {
+  /**
+   * Returns a GenFolder that skips the initial `amount` values of the input.
+   * @param amount the amount of input values to skip
+   */
+  dropInput(amount: number): FolderT<A, R> {
     return this.filterInput((_, index) => index >= amount)
   }
 
-  sliceInput(from: number, amount: number): Folder<A, R> {
+  /**
+   * Returns a GenFolder that only process `amount` elements from the given `from` index of the input elements.
+   * @param from the index to start processing elements
+   * @param amount the amount of elements to process
+   */
+  sliceInput(from: number, amount: number): FolderT<A, R> {
     return this.dropInput(from).takeInput(from + amount)
   }
 
-  takeWhileInput(pred: Pred<A>): Folder<A, R> {
+  /**
+   * Returns a GenFolder that only processes elements from the input as long as the given `pred` is true. Ignores the rest.
+   * @param pred a predicate over the input elements
+   */
+  takeWhileInput(pred: Pred<A>): FolderT<A, R> {
     return new GenFolder(
       () => ({ state: this.createInitState(), done: false }),
       (combinedState, elem, index) => {
@@ -259,7 +312,11 @@ export class GenFolder<A, S, R> {
     )
   }
 
-  dropWhileInput(pred: Pred<A>): Folder<A, R> {
+  /**
+   * Returns a GenFolder that skips elements of the input as long as given `pred` is true. Then processes all other elements.
+   * @param pred a predicate over the input elements
+   */
+  dropWhileInput(pred: Pred<A>): FolderT<A, R> {
     return GenFolder.create(
       () => ({ state: this.createInitState(), done: false, virtualIndex: 0 }),
       (combinedState, elem, index) => {
@@ -279,7 +336,12 @@ export class GenFolder<A, S, R> {
     )
   }
 
-  distinctByInput<K>(keyFun: (value: A, index: number) => K): Folder<A, R> {
+  /**
+   * Returns a GenFolder that processes every input element for which the given `keyFun` returns the same key value at most once.
+   * @typeparam K the element key type
+   * @param keyFun a function taking an input element and its index, and returning a key
+   */
+  distinctByInput<K>(keyFun: (value: A, index: number) => K): FolderT<A, R> {
     return GenFolder.create(
       () => ({
         state: this.createInitState(),
@@ -303,11 +365,17 @@ export class GenFolder<A, S, R> {
     )
   }
 
-  distinctInput(): Folder<A, R> {
-    return this.distinctByInput(v => v)
+  /**
+   * Returns a GenFolder that returns each unique input element at most once.
+   */
+  distinctInput(): FolderT<A, R> {
+    return this.distinctByInput(id)
   }
 
-  filterChangedInput(): Folder<A, R> {
+  /**
+   * Returns a GenFolder that only processes those elements that are not equal to their predecessor.
+   */
+  filterChangedInput(): FolderT<A, R> {
     return GenFolder.create<
       A,
       { state: S; prevElem: A | undefined; virtualIndex: number },
@@ -335,38 +403,51 @@ export class GenFolder<A, S, R> {
     )
   }
 
-  sampleInput(nth: number): Folder<A, R> {
+  /**
+   * Returns a GenFolder that processes each `nth` element of the input elements.
+   * @param nth specifies the index of which each element that has a multiple of `nth` will be processed
+   */
+  sampleInput(nth: number): FolderT<A, R> {
     return this.filterInput((_, index) => index % nth === 0)
   }
 
-  // TODO index is not always strictly increasing
+  /**
+   * Returns a GenFolder that skips `remove` elements at those input elements for which `pred` returns true,
+   * and then inserts th e optional iterable resulting from calling `insert` with the found element and its
+   * index, at most `amount` times.
+   * @param pred the predicate over input elements
+   * @param remove the amount of elements to skip when pred is true
+   * @param insert the iterable elements to insert when pred is true
+   * @param amount the maximum amount of times to replace an input element
+   */
   patchWhereInput(
     pred: Pred<A>,
     remove: number,
     insert?: (elem: A, index: number) => Iterable<A>,
     amount?: number
-  ): Folder<A, R> {
+  ): FolderT<A, R> {
     return GenFolder.create(
       () => ({
         state: this.createInitState(),
         toRemove: 0,
-        amountLeft: amount || 0
+        amountLeft: amount || Number.MAX_SAFE_INTEGER,
+        virtualIndex: 0
       }),
-      (combinedState, elem, index) => {
+      (combinedState, elem) => {
         if (combinedState.toRemove <= 0) {
           if (
             (amount === undefined || combinedState.amountLeft > 0) &&
-            pred(elem, index)
+            pred(elem, combinedState.virtualIndex)
           ) {
             combinedState.toRemove = remove
             combinedState.amountLeft--
 
             if (insert !== undefined) {
-              for (const el of insert(elem, index)) {
+              for (const el of insert(elem, combinedState.virtualIndex)) {
                 combinedState.state = this.nextState(
                   combinedState.state,
                   el,
-                  index
+                  combinedState.virtualIndex++
                 )
               }
             }
@@ -376,7 +457,7 @@ export class GenFolder<A, S, R> {
             combinedState.state = this.nextState(
               combinedState.state,
               elem,
-              index
+              combinedState.virtualIndex++
             )
           }
         }
@@ -390,12 +471,20 @@ export class GenFolder<A, S, R> {
     )
   }
 
+  /**
+   * Returns a GenFolder where, at the occurence of given `elem` element, `remove` elements are skipped, and
+   * `insert` elements are inserted, at most `amount` times.
+   * @param elem the element to find
+   * @param remove the amount of elements to skip when the element is found
+   * @param insert the optional iterable to insert when the element is found
+   * @param amount the maximum amount of time to replace an element
+   */
   patchElemInput(
     elem: A,
     remove: number,
     insert?: Iterable<A>,
     amount?: number
-  ): Folder<A, R> {
+  ): FolderT<A, R> {
     return this.patchWhereInput(
       e => e === elem,
       remove,

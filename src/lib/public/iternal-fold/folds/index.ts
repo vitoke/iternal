@@ -4,7 +4,7 @@
 
 import { NoValue } from '../../../private/iternal-common'
 import { Dict, Histogram, OptLazy, Pred, UniqueDict } from '../../constants'
-import { Folder, GenFolder, MonoFolder } from '../gen-folder'
+import { Folder, FolderT, GenFolder, MonoFolder } from '../gen-folder'
 import { combine } from '../../../private/iternal-shared'
 
 export namespace Folds {
@@ -20,7 +20,7 @@ export namespace Folds {
    * result: '123'
    * ```
    */
-  export const stringAppend: Folder<any, string> = Folder.create(
+  export const stringAppend: FolderT<any, string> = Folder.create(
     '',
     (state, elem) => state.concat(String(elem))
   )
@@ -33,7 +33,7 @@ export namespace Folds {
    * result: '321'
    * ```
    */
-  export const stringPrepend: Folder<any, string> = Folder.create(
+  export const stringPrepend: FolderT<any, string> = Folder.create(
     '',
     (state, elem) => String(elem).concat(state)
   )
@@ -46,7 +46,7 @@ export namespace Folds {
    * result: 3
    * ```
    */
-  export const count: Folder<any, number> = Folder.create(
+  export const count: FolderT<any, number> = Folder.create(
     0,
     (_, __, index) => index + 1
   )
@@ -62,7 +62,7 @@ export namespace Folds {
    * result: { foo: 1, bar: true}
    * ```
    */
-  export function toObject<V>(target?: {}): Folder<
+  export function toObject<V>(target?: {}): FolderT<
     [string, V],
     { [key: string]: V }
   > {
@@ -93,7 +93,7 @@ export namespace Folds {
   export function find<E>(
     pred: Pred<E>,
     otherwise: OptLazy<E> = throwFoldError
-  ): Folder<E, E> {
+  ): FolderT<E, E> {
     return GenFolder.create<E, E | NoValue, E>(
       NoValue,
       (found, value, index) => {
@@ -124,7 +124,7 @@ export namespace Folds {
   export function findLast<E>(
     pred: Pred<E>,
     otherwise: OptLazy<E> = throwFoldError
-  ): Folder<E, E> {
+  ): FolderT<E, E> {
     return GenFolder.create<E, E | NoValue, E>(
       NoValue,
       (found, value, index) => (pred(value, index) ? value : found),
@@ -148,15 +148,15 @@ export namespace Folds {
    */
   export function first<E>(
     otherwise: OptLazy<E> = throwFoldError
-  ): Folder<E, E> {
+  ): FolderT<E, E> {
     return find(() => true, otherwise)
   }
 
-  export function take<E>(amount: number): Folder<E, E> {
+  export function take<E>(amount: number): FolderT<E, E> {
     return find((_, index) => index <= amount)
   }
 
-  export function drop<E>(amount: number): Folder<E, E> {
+  export function drop<E>(amount: number): FolderT<E, E> {
     return find((_, index) => index >= amount)
   }
 
@@ -180,7 +180,7 @@ export namespace Folds {
    */
   export function last<E>(
     otherwise: OptLazy<E> = throwFoldError
-  ): Folder<E, E> {
+  ): FolderT<E, E> {
     return findLast(() => true, otherwise)
   }
 
@@ -201,7 +201,7 @@ export namespace Folds {
   export function elemAt<E>(
     index: number,
     otherwise: OptLazy<E> = throwFoldError
-  ): Folder<E, E> {
+  ): FolderT<E, E> {
     return find((_, i) => i === index, otherwise)
   }
 
@@ -214,7 +214,7 @@ export namespace Folds {
    * result: false
    * ```
    */
-  export function some<E>(pred: Pred<E>): Folder<E, boolean> {
+  export function some<E>(pred: Pred<E>): FolderT<E, boolean> {
     return Folder.create(
       false,
       (state, value, index) => state || pred(value, index),
@@ -231,7 +231,7 @@ export namespace Folds {
    * result: true
    * ```
    */
-  export function every<E>(pred: Pred<E>): Folder<E, boolean> {
+  export function every<E>(pred: Pred<E>): FolderT<E, boolean> {
     return Folder.create(
       true,
       (state, value, index) => state && pred(value, index),
@@ -248,7 +248,7 @@ export namespace Folds {
    * result: true
    * ```
    */
-  export function contains<E>(elem: E): Folder<E, boolean> {
+  export function contains<E>(elem: E): FolderT<E, boolean> {
     return some(e => e === elem)
   }
 
@@ -261,7 +261,7 @@ export namespace Folds {
    * result: true
    * ```
    */
-  export function containsAny<E>(...elems: E[]): Folder<E, boolean> {
+  export function containsAny<E>(...elems: E[]): FolderT<E, boolean> {
     const set = new Set(elems)
     return some(e => set.has(e))
   }
@@ -294,7 +294,7 @@ export namespace Folds {
    * result: true
    * ```
    */
-  export const hasValue: Folder<any, boolean> = some(() => true)
+  export const hasValue: FolderT<any, boolean> = some(() => true)
 
   /**
    * Returns a folder that returns true if no value is received
@@ -304,7 +304,7 @@ export namespace Folds {
    * result: false
    * ```
    */
-  export const noValue: Folder<any, boolean> = every(() => false)
+  export const noValue: FolderT<any, boolean> = every(() => false)
 
   /**
    * Returns a folder that creates an array from the received elements.
@@ -317,7 +317,7 @@ export namespace Folds {
    * result: [1, 3, 5, 7]
    * ```
    */
-  export function toArray<E>(target?: E[]): Folder<E, E[]> {
+  export function toArray<E>(target?: E[]): FolderT<E, E[]> {
     return Folder.create(
       () => target || [],
       (arr, elem) => {
@@ -339,7 +339,7 @@ export namespace Folds {
    * result: Map(a -> 1, b -> 5)
    * ```
    */
-  export function toMap<K, V>(target?: Map<K, V>): Folder<[K, V], Map<K, V>> {
+  export function toMap<K, V>(target?: Map<K, V>): FolderT<[K, V], Map<K, V>> {
     return Folder.create(
       () => target || new Map(),
       (map, [key, value]) => map.set(key, value)
@@ -357,7 +357,7 @@ export namespace Folds {
    * result: Set(1, 3, 5)
    * ```
    */
-  export function toSet<E>(target?: Set<E>): Folder<E, Set<E>> {
+  export function toSet<E>(target?: Set<E>): FolderT<E, Set<E>> {
     return Folder.create(
       () => target || new Set(),
       (set, value) => set.add(value)
@@ -377,7 +377,7 @@ export namespace Folds {
    */
   export function groupBy<K, V>(
     keyFun: (value: V, index: number) => K
-  ): Folder<V, Dict<K, V>> {
+  ): FolderT<V, Dict<K, V>> {
     return Folder.create(
       () => Dict.create(),
       (dict, value, index) => Dict.add(dict, keyFun(value, index), value)
@@ -397,7 +397,7 @@ export namespace Folds {
    */
   export function groupByUnique<K, V>(
     keyFun: (value: V, index: number) => K
-  ): Folder<V, UniqueDict<K, V>> {
+  ): FolderT<V, UniqueDict<K, V>> {
     return Folder.create(
       () => UniqueDict.create(),
       (dict, value, index) => UniqueDict.add(dict, keyFun(value, index), value)
@@ -420,7 +420,7 @@ export namespace Folds {
   export function histogram<E>(
     sortBy?: 'TOP' | 'BOTTOM',
     amount?: number
-  ): Folder<E, Histogram<E>> {
+  ): FolderT<E, Histogram<E>> {
     if (amount !== undefined && amount <= 0) {
       return Folder.fixed(Histogram.create())
     }
@@ -474,7 +474,7 @@ export namespace Folds {
    * result: [[2, 4], [1, 3, 5]]
    * ```
    */
-  export function partition<E>(pred: Pred<E>): Folder<E, [E[], E[]]> {
+  export function partition<E>(pred: Pred<E>): FolderT<E, [E[], E[]]> {
     return groupBy(pred).mapResult(
       (map): [E[], E[]] => [map.get(true) || [], map.get(false) || []]
     )
@@ -591,7 +591,7 @@ export namespace Folds {
    * result: [1, 4]
    * ```
    */
-  export const range: Folder<number, [number, number]> = combine(min(), max())
+  export const range: FolderT<number, [number, number]> = combine(min(), max())
 
   /**
    * Returns a folder that performs the `toNumber` function on each element, and returns the element for which the result
@@ -671,7 +671,7 @@ export namespace Folds {
    */
   export function rangeBy<E>(
     toNumber: (value: E) => number
-  ): Folder<E, [E, E]> {
+  ): FolderT<E, [E, E]> {
     return combine(minBy(toNumber), maxBy(toNumber))
   }
 }

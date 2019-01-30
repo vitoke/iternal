@@ -24,7 +24,7 @@ import {
   Pred
 } from '../constants'
 import { Folds } from '../iternal-fold/folds'
-import { Folder, MonoFun } from '../iternal-fold/gen-folder'
+import { FolderT, MonoFun } from '../iternal-fold/gen-folder'
 import { Iter } from '../iternal-sync'
 
 function toIterator<X>(iterable: AnyIterable<X>): AnyIterator<X> {
@@ -257,7 +257,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: 9
    * ```
    */
-  async fold<R>(folder: Folder<T, R>): Promise<R> {
+  async fold<R>(folder: FolderT<T, R>): Promise<R> {
     let result = folder.createInitState()
     let index = 0
     if (optPred(result, index, folder.escape)) {
@@ -283,7 +283,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 4, 8)
    * ```
    */
-  foldIter<R>(folder: Folder<T, R>): AsyncIter<R> {
+  foldIter<R>(folder: FolderT<T, R>): AsyncIter<R> {
     return this.applyCustomOperation(async function*(iterable) {
       let result = folder.createInitState()
       let index = 0
