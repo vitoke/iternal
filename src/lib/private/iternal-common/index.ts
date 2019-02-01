@@ -1,4 +1,4 @@
-import { AnyIterable, AnyIterator, Pred } from '../../public/constants'
+import { AnyIterable, AnyIterator, Pred, MonitorEffect } from '../../public/constants'
 import { Type } from '../util'
 
 export const NoValue: unique symbol = Symbol('NO_VALUE')
@@ -19,12 +19,12 @@ export function getAnyIterator<T>(iterable: AnyIterable<T>): AnyIterator<T> {
   return (iterable as any)[Symbol.iterator]()
 }
 
-export function random(min = 0.0, max = 1.0) {
+export function getRandomFloat(min = 0.0, max = 1.0) {
   const r = Math.random()
   return r * (max - min) + min
 }
 
-export function randomInt(min = Number.MIN_SAFE_INTEGER, max = Number.MAX_SAFE_INTEGER) {
+export function getRandomInt(min = Number.MIN_SAFE_INTEGER, max = Number.MAX_SAFE_INTEGER) {
   const minR = Math.ceil(min)
   const maxR = Math.floor(max)
   const r = Math.random()
@@ -54,3 +54,6 @@ export function checkPureAnyIterable(it: any) {
 export function optPred<E>(value: E, index: number, pred?: Pred<E>): boolean {
   return pred !== undefined && pred(value, index)
 }
+
+export const defaultMonitorEffect: MonitorEffect<any> = (v, i, t) =>
+  console.log(`${t || ''}[${i}]: ${v}`)

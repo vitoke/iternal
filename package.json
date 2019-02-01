@@ -35,7 +35,8 @@
     "commit": "git-cz",
     "semantic-release": "semantic-release",
     "semantic-release-prepare": "ts-node tools/semantic-release-prepare",
-    "travis-deploy-once": "travis-deploy-once"
+    "travis-deploy-once": "travis-deploy-once",
+    "run:demo": "ts-node -O '{\"module\": \"commonjs\"}'"
   },
   "husky": {
     "hooks": {

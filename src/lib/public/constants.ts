@@ -15,11 +15,12 @@ export const Errors = {
  * @typeparam E the array element type
  */
 export type NonEmpty<E> = [E, ...E[]]
-export const NonEmpty = {
+
+export namespace NonEmpty {
   /**
    * Returns true if the input array `arr` is not empty.
    */
-  isNonEmpty<T>(arr: T[]): arr is NonEmpty<T> {
+  export function isNonEmpty<T>(arr: T[]): arr is NonEmpty<T> {
     return arr.length > 0
   }
 }
@@ -34,14 +35,17 @@ export type Lazy<T> = () => T
  * An optionally lazy value of type T, can be directly a value T, or a function of arity 0 that returns a value of type T
  * @typeparam T the value type
  */
+
 export type OptLazy<T> = Lazy<T> | T
-export const OptLazy = {
-  toLazy<T>(optLazy: OptLazy<T>): Lazy<T> {
+
+export namespace OptLazy {
+  export function toLazy<T>(optLazy: OptLazy<T>): Lazy<T> {
     if (typeof optLazy === 'function') return optLazy as Lazy<T>
     return () => optLazy
-  },
-  toValue<T>(optLazy: OptLazy<T>): T {
-    return OptLazy.toLazy(optLazy)()
+  }
+
+  export function toValue<T>(optLazy: OptLazy<T>): T {
+    return toLazy(optLazy)()
   }
 }
 
@@ -68,16 +72,11 @@ export type Effect<E> = IterFun<E, void>
 export type MapFun<A, B> = IterFun<A, B>
 
 /**
- * A function that takes an element of type A and its index, and returns an element of type B or undefined.
- */
-export type CollectFun<A, B> = IterFun<A, B | undefined>
-
-/**
  * A function that takes a current state of type S, an element of type E and its index, and returns a new state of type S.
  * @typeparam E the element type
  * @typeparam S the state type
  */
-export type FoldFun<E, S> = (state: S, elem: E, index: number) => S
+export type ReduceFun<E, S> = (state: S, elem: E, index: number) => S
 
 export type AnyIterable<E> = Iterable<E> | AsyncIterable<E>
 export type AnyIterator<E> = Iterator<E> | AsyncIterator<E>
@@ -91,11 +90,13 @@ export type Indexed<E> = Iterable<E> & { [key: number]: E; length: number }
 export type MonitorEffect<E> = (value: E, index: number, tag?: string) => void
 
 export type Dict<K, V> = Map<K, V[]>
-export const Dict = {
-  create<K, V>(): Dict<K, V> {
+
+export namespace Dict {
+  export function create<K, V>(): Dict<K, V> {
     return new Map()
-  },
-  add<K, V>(dict: Dict<K, V>, key: K, value: V): Dict<K, V> {
+  }
+
+  export function add<K, V>(dict: Dict<K, V>, key: K, value: V): Dict<K, V> {
     const entries = dict.get(key)
     if (entries === undefined) dict.set(key, [value])
     else entries.push(value)
@@ -109,11 +110,13 @@ export const Dict = {
  * @typeparam V the value type
  */
 export type UniqueDict<K, V> = Map<K, Set<V>>
-export const UniqueDict = {
-  create<K, V>(): UniqueDict<K, V> {
+
+export namespace UniqueDict {
+  export function create<K, V>(): UniqueDict<K, V> {
     return new Map()
-  },
-  add<K, V>(dict: UniqueDict<K, V>, key: K, value: V): UniqueDict<K, V> {
+  }
+
+  export function add<K, V>(dict: UniqueDict<K, V>, key: K, value: V): UniqueDict<K, V> {
     const entrySet = dict.get(key)
     if (entrySet === undefined) dict.set(key, new Set().add(value))
     else entrySet.add(value)
@@ -125,11 +128,13 @@ export const UniqueDict = {
  * A Map with, for each key, the amount of occurrances of the key as its value
  */
 export type Histogram<K> = Map<K, number>
-export const Histogram = {
-  create<K>(): Histogram<K> {
+
+export namespace Histogram {
+  export function create<K>(): Histogram<K> {
     return new Map()
-  },
-  add<K>(hist: Histogram<K>, value: K): Histogram<K> {
+  }
+
+  export function add<K>(hist: Histogram<K>, value: K): Histogram<K> {
     const count = hist.get(value) || 0
     hist.set(value, count + 1)
     return hist

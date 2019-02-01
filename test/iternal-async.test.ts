@@ -1,9 +1,9 @@
-import { AsyncIter, Folds, Iter } from '../src/lib/public/iternal'
+import { asyncIter, AsyncIter, Collectors, iter } from '../src/lib/public/iternal'
 import { addIndex, double, isEven, isOdd, less3, remove, sum } from './test-utils'
 
 const expectAsyncIter = <T>(iter: AsyncIter<T>) => async (resultIt: Iterable<T>) =>
-  expect(await iter.fold(Folds.toArray())).toEqual(
-    await AsyncIter.fromIterable(resultIt).fold(Folds.toArray())
+  expect(await iter.collect(Collectors.toArray())).toEqual(
+    await asyncIter(resultIt).collect(Collectors.toArray())
   )
 
 const expectAsyncToThrow = async (f: () => void) => {
@@ -19,17 +19,17 @@ const expectAsyncToThrow = async (f: () => void) => {
 }
 
 describe('AsyncIter', () => {
-  const iter0 = AsyncIter.empty
-  const iter1 = AsyncIter.fromIterator<number>(async function*() {
+  const iter0 = asyncIter.empty
+  const iter1 = asyncIter.fromIterator<number>(async function*() {
     yield 1
   })
-  const iter3 = AsyncIter.fromIterator<number>(async function*() {
+  const iter3 = asyncIter.fromIterator<number>(async function*() {
     yield 1
     yield 2
     yield 3
   })
-  const iterInf = AsyncIter.fromIterator<number>(async function*() {
-    yield* Iter.nats
+  const iterInf = asyncIter.fromIterator<number>(async function*() {
+    yield* iter.nats
   })
 
   test('simple', async () => {
@@ -39,11 +39,11 @@ describe('AsyncIter', () => {
   })
 
   test('creation', async () => {
-    await expectAsyncIter(AsyncIter.of(1, 2, 3))([1, 2, 3])
+    await expectAsyncIter(iter.of(1, 2, 3).toAsync())([1, 2, 3])
     await expectAsyncIter(
-      AsyncIter.generate(Promise.resolve(0), v => Promise.resolve(v + 1)).take(5)
+      asyncIter.generate(Promise.resolve(0), v => Promise.resolve(v + 1)).take(5)
     )([0, 1, 2, 3, 4])
-    await expectAsyncIter(AsyncIter.unfold(Promise.resolve(0), async v => [v * 2, v + 1]).take(3))([
+    await expectAsyncIter(asyncIter.unfold(Promise.resolve(0), async v => [v * 2, v + 1]).take(3))([
       0,
       2,
       4
@@ -71,7 +71,12 @@ describe('AsyncIter', () => {
   test('filter', async () => {
     await expectAsyncIter(iter0.filter(isEven))([])
     await expectAsyncIter(iter1.filter(isEven))([])
-    await expectAsyncIter(AsyncIter.of(2).filter(isEven))([2])
+    await expectAsyncIter(
+      iter
+        .of(2)
+        .toAsync()
+        .filter(isEven)
+    )([2])
     await expectAsyncIter(iter3.filter(isEven))([2])
     await expectAsyncIter(iterInf.filter(isEven).take(3))([0, 2, 4])
   })
@@ -79,7 +84,12 @@ describe('AsyncIter', () => {
   test('filterNot', async () => {
     await expectAsyncIter(iter0.filterNot(isEven))([])
     await expectAsyncIter(iter1.filterNot(isEven))([1])
-    await expectAsyncIter(AsyncIter.of(2).filterNot(isEven))([])
+    await expectAsyncIter(
+      iter
+        .of(2)
+        .toAsync()
+        .filterNot(isEven)
+    )([])
     await expectAsyncIter(iter3.filterNot(isEven))([1, 3])
     await expectAsyncIter(iterInf.filterNot(isEven).take(3))([1, 3, 5])
   })
@@ -113,26 +123,21 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iter0.filterChanged())([])
     await expectAsyncIter(iter1.filterChanged())([1])
     await expectAsyncIter(iter3.filterChanged())([1, 2, 3])
-    await expectAsyncIter(AsyncIter.of(1, 2, 2, 3, 3, 1, 3, 3, 3).filterChanged())([1, 2, 3, 1, 3])
+    await expectAsyncIter(
+      iter
+        .of(1, 2, 2, 3, 3, 1, 3, 3, 3)
+        .toAsync()
+        .filterChanged()
+    )([1, 2, 3, 1, 3])
   })
 
   test('flatMap', async () => {
-    const toIter = (v: any) => AsyncIter.of(v, v)
+    const toIter = (v: any) => iter.of(v, v).toAsync()
 
     await expectAsyncIter(iter0.flatMap(toIter))([])
     await expectAsyncIter(iter1.flatMap(toIter))([1, 1])
     await expectAsyncIter(iter3.flatMap(toIter))([1, 1, 2, 2, 3, 3])
     await expectAsyncIter(iterInf.flatMap(toIter).take(4))([0, 0, 1, 1])
-  })
-
-  test('collect', async () => {
-    const evenToString = (v: number) => (isEven(v) ? '' + v : undefined)
-
-    await expectAsyncIter(iter0.collect(evenToString))([])
-    await expectAsyncIter(iter1.collect(evenToString))([])
-    await expectAsyncIter(AsyncIter.of(2).collect(evenToString))(['2'])
-    await expectAsyncIter(iter3.collect(evenToString))(['2'])
-    await expectAsyncIter(iterInf.collect(evenToString).take(3))(['0', '2', '4'])
   })
 
   test('concat', async () => {
@@ -169,6 +174,23 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iterInf.drop(10).take(3))([10, 11, 12])
   })
 
+  test('dropLast', async () => {
+    await expectAsyncIter(iter0.dropLast(0))([])
+    await expectAsyncIter(iter0.dropLast(3))([])
+    await expectAsyncIter(iter1.dropLast(0))([1])
+    await expectAsyncIter(iter1.dropLast(1))([])
+    await expectAsyncIter(iter1.dropLast(3))([])
+    await expectAsyncIter(iter3.dropLast(0))([1, 2, 3])
+    await expectAsyncIter(iter3.dropLast(1))([1, 2])
+    await expectAsyncIter(iter3.dropLast(2))([1])
+    await expectAsyncIter(
+      iter
+        .range(0, 10)
+        .toAsync()
+        .dropLast(6)
+    )([0, 1, 2, 3])
+  })
+
   test('take', async () => {
     await expectAsyncIter(iter0.take(10))([])
     await expectAsyncIter(iter1.take(10))([1])
@@ -192,9 +214,21 @@ describe('AsyncIter', () => {
 
   test('indicesOf', async () => {
     await expectAsyncIter(iter0.indicesOf(0))([])
-    await expectAsyncIter(AsyncIter.fromIterable('a').indicesOf('a'))([0])
-    await expectAsyncIter(AsyncIter.fromIterable('a').indicesOf('b'))([])
-    await expectAsyncIter(AsyncIter.fromIterable('babbaab').indicesOf('a'))([1, 4, 5])
+    await expectAsyncIter(
+      iter('a')
+        .toAsync()
+        .indicesOf('a')
+    )([0])
+    await expectAsyncIter(
+      iter('a')
+        .toAsync()
+        .indicesOf('b')
+    )([])
+    await expectAsyncIter(
+      iter('babbaab')
+        .toAsync()
+        .indicesOf('a')
+    )([1, 4, 5])
   })
 
   test('takeWhile', async () => {
@@ -282,7 +316,7 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iter3.interleaveAll(iter0))([1, 2, 3])
     await expectAsyncIter(iter3.interleaveAll(iter1))([1, 1, 2, 3])
     await expectAsyncIter(iter3.interleaveAll(iter3))([1, 1, 2, 2, 3, 3])
-    await expectAsyncIter(iter3.interleaveAll(Iter.range(10, 15), Iter.of(100)))([
+    await expectAsyncIter(iter3.interleaveAll(iter.range(10, 15), iter.of(100)))([
       1,
       10,
       100,
@@ -299,7 +333,7 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iter0.interleaveRound(iter0))([])
     await expectAsyncIter(iter0.interleaveRound(iter1))([])
     await expectAsyncIter(iter1.interleaveRound(iter0))([])
-    await expectAsyncIter(iter1.interleaveRound(Iter.of(2)).take(5))([1, 2, 1, 2, 1])
+    await expectAsyncIter(iter1.interleaveRound(iter.of(2)).take(5))([1, 2, 1, 2, 1])
     await expectAsyncIter(iter1.interleaveRound(iter3).take(8))([1, 1, 1, 2, 1, 3, 1, 1])
   })
 
@@ -372,19 +406,19 @@ describe('AsyncIter', () => {
     await expectAsyncIter(iter0.patchAt(0, 0, () => iter1))([1])
     await expectAsyncIter(iter0.patchAt(0, 10, () => iter1))([1])
     await expectAsyncIter(iter0.patchAt(-10, 0, () => iter1))([1])
-    await expectAsyncIter(iter1.patchAt(-10, 0, () => Iter.of(2)))([2, 1])
-    await expectAsyncIter(iter1.patchAt(-10, 10, () => Iter.of(2)))([2])
-    await expectAsyncIter(iter1.patchAt(0, 0, () => Iter.of(2)))([2, 1])
-    await expectAsyncIter(iter1.patchAt(1, 0, () => Iter.of(2)))([1, 2])
-    await expectAsyncIter(iter1.patchAt(10, 10, () => Iter.of(2)))([1, 2])
-    await expectAsyncIter(iter1.patchAt(100, 0, () => Iter.of(2)))([1, 2])
-    await expectAsyncIter(iter3.patchAt(-10, 0, () => Iter.of(9)))([9, 1, 2, 3])
-    await expectAsyncIter(iter3.patchAt(0, 0, () => Iter.of(9)))([9, 1, 2, 3])
-    await expectAsyncIter(iter3.patchAt(1, 0, () => Iter.of(9)))([1, 9, 2, 3])
-    await expectAsyncIter(iter3.patchAt(100, 0, () => Iter.of(9)))([1, 2, 3, 9])
-    await expectAsyncIter(iter3.patchAt(0, 1, () => Iter.of(9)))([9, 2, 3])
-    await expectAsyncIter(iter3.patchAt(1, 1, () => Iter.of(9)))([1, 9, 3])
-    await expectAsyncIter(iter3.patchAt(100, 1, () => Iter.of(9)))([1, 2, 3, 9])
+    await expectAsyncIter(iter1.patchAt(-10, 0, () => iter.of(2)))([2, 1])
+    await expectAsyncIter(iter1.patchAt(-10, 10, () => iter.of(2)))([2])
+    await expectAsyncIter(iter1.patchAt(0, 0, () => iter.of(2)))([2, 1])
+    await expectAsyncIter(iter1.patchAt(1, 0, () => iter.of(2)))([1, 2])
+    await expectAsyncIter(iter1.patchAt(10, 10, () => iter.of(2)))([1, 2])
+    await expectAsyncIter(iter1.patchAt(100, 0, () => iter.of(2)))([1, 2])
+    await expectAsyncIter(iter3.patchAt(-10, 0, () => iter.of(9)))([9, 1, 2, 3])
+    await expectAsyncIter(iter3.patchAt(0, 0, () => iter.of(9)))([9, 1, 2, 3])
+    await expectAsyncIter(iter3.patchAt(1, 0, () => iter.of(9)))([1, 9, 2, 3])
+    await expectAsyncIter(iter3.patchAt(100, 0, () => iter.of(9)))([1, 2, 3, 9])
+    await expectAsyncIter(iter3.patchAt(0, 1, () => iter.of(9)))([9, 2, 3])
+    await expectAsyncIter(iter3.patchAt(1, 1, () => iter.of(9)))([1, 9, 3])
+    await expectAsyncIter(iter3.patchAt(100, 1, () => iter.of(9)))([1, 2, 3, 9])
   })
 
   test('patchWhere', async () => {
@@ -398,7 +432,7 @@ describe('AsyncIter', () => {
   })
 
   test('patchElem', async () => {
-    const subst = AsyncIter.of(-1, -2)
+    const subst = iter.of(-1, -2).toAsync()
 
     await expectAsyncIter(iter0.patchElem(1, 1, subst))([])
     await expectAsyncIter(iter1.patchElem(0, 1, subst))([1])
@@ -408,36 +442,72 @@ describe('AsyncIter', () => {
   })
 
   test('patchWhere amount', async () => {
-    await expectAsyncIter(iter0.patchWhere(isEven, 1, () => Iter.of(10), 1))([])
-    await expectAsyncIter(iter1.patchWhere(isEven, 0, () => Iter.of(10), 1))([1])
-    await expectAsyncIter(iter1.patchWhere(isOdd, 0, () => Iter.of(10), 1))([10, 1])
-    await expectAsyncIter(iter1.patchWhere(isOdd, 1, () => Iter.of(10), 1))([10])
+    await expectAsyncIter(iter0.patchWhere(isEven, 1, () => iter.of(10), 1))([])
+    await expectAsyncIter(iter1.patchWhere(isEven, 0, () => iter.of(10), 1))([1])
+    await expectAsyncIter(iter1.patchWhere(isOdd, 0, () => iter.of(10), 1))([10, 1])
+    await expectAsyncIter(iter1.patchWhere(isOdd, 1, () => iter.of(10), 1))([10])
     await expectAsyncIter(
-      AsyncIter.fromIterable(Iter.range(0, 5)).patchWhere(isOdd, 1, () => Iter.of(10), 1)
+      iter
+        .range(0, 5)
+        .toAsync()
+        .patchWhere(isOdd, 1, () => iter.of(10), 1)
     )([0, 10, 2, 3, 4])
     await expectAsyncIter(
-      AsyncIter.fromIterable(Iter.range(0, 5)).patchWhere(isOdd, 0, () => Iter.of(10), 1)
+      iter
+        .range(0, 5)
+        .toAsync()
+        .patchWhere(isOdd, 0, () => iter.of(10), 1)
     )([0, 10, 1, 2, 3, 4])
     await expectAsyncIter(
-      AsyncIter.fromIterable(Iter.range(0, 6)).patchWhere(isOdd, 1, () => Iter.of(10), 2)
+      iter
+        .range(0, 6)
+        .toAsync()
+        .patchWhere(isOdd, 1, () => iter.of(10), 2)
     )([0, 10, 2, 10, 4, 5])
     await expectAsyncIter(
-      AsyncIter.fromIterable(Iter.range(0, 6)).patchWhere(isOdd, 1, undefined, 2)
+      iter
+        .range(0, 6)
+        .toAsync()
+        .patchWhere(isOdd, 1, undefined, 2)
     )([0, 2, 4, 5])
   })
 
   test('patchElem amount', async () => {
-    await expectAsyncIter(AsyncIter.fromIterable('').patchElem('a', 0, 'ab', 1))('')
-    await expectAsyncIter(AsyncIter.fromIterable('a').patchElem('a', 0, 'XX', 1))('XXa')
-    await expectAsyncIter(AsyncIter.fromIterable('a').patchElem('a', 1, 'XX', 1))('XX')
-    await expectAsyncIter(AsyncIter.fromIterable('b').patchElem('a', 0, 'XX', 1))('b')
-    await expectAsyncIter(AsyncIter.fromIterable('bac').patchElem('a', 0, 'XX', 1))('bXXac')
-    await expectAsyncIter(AsyncIter.fromIterable('bacadata').patchElem('a', 0, 'XX', 2))(
-      'bXXacXXadata'
-    )
-    await expectAsyncIter(AsyncIter.fromIterable('bacadata').patchElem('a', 1, 'XX', 2))(
-      'bXXcXXdata'
-    )
+    await expectAsyncIter(
+      iter('')
+        .toAsync()
+        .patchElem('a', 0, 'ab', 1)
+    )('')
+    await expectAsyncIter(
+      iter('a')
+        .toAsync()
+        .patchElem('a', 0, 'XX', 1)
+    )('XXa')
+    await expectAsyncIter(
+      iter('a')
+        .toAsync()
+        .patchElem('a', 1, 'XX', 1)
+    )('XX')
+    await expectAsyncIter(
+      iter('b')
+        .toAsync()
+        .patchElem('a', 0, 'XX', 1)
+    )('b')
+    await expectAsyncIter(
+      iter('bac')
+        .toAsync()
+        .patchElem('a', 0, 'XX', 1)
+    )('bXXac')
+    await expectAsyncIter(
+      iter('bacadata')
+        .toAsync()
+        .patchElem('a', 0, 'XX', 2)
+    )('bXXacXXadata')
+    await expectAsyncIter(
+      iter('bacadata')
+        .toAsync()
+        .patchElem('a', 1, 'XX', 2)
+    )('bXXcXXdata')
   })
 
   test('splitWhere', async () => {
@@ -449,46 +519,54 @@ describe('AsyncIter', () => {
   })
 
   test('splitOnElem', async () => {
-    await expectAsyncIter(AsyncIter.empty.splitOnElem(' '))([])
-    await expectAsyncIter(AsyncIter.fromIterable('po po').splitOnElem(' '))([
-      ['p', 'o'],
-      ['p', 'o']
-    ])
-    await expectAsyncIter(AsyncIter.fromIterable('po  po').splitOnElem(' '))([
-      ['p', 'o'],
-      [],
-      ['p', 'o']
-    ])
-    await expectAsyncIter(AsyncIter.fromIterable(' po').splitOnElem(' '))([[], ['p', 'o']])
-    await expectAsyncIter(AsyncIter.fromIterable('po ').splitOnElem(' '))([['p', 'o'], []])
+    await expectAsyncIter(asyncIter.empty.splitOnElem(' '))([])
+    await expectAsyncIter(
+      iter('po po')
+        .toAsync()
+        .splitOnElem(' ')
+    )([['p', 'o'], ['p', 'o']])
+    await expectAsyncIter(
+      iter('po  po')
+        .toAsync()
+        .splitOnElem(' ')
+    )([['p', 'o'], [], ['p', 'o']])
+    await expectAsyncIter(
+      iter(' po')
+        .toAsync()
+        .splitOnElem(' ')
+    )([[], ['p', 'o']])
+    await expectAsyncIter(
+      iter('po ')
+        .toAsync()
+        .splitOnElem(' ')
+    )([['p', 'o'], []])
   })
 
   test('intersperse', async () => {
-    await expectAsyncIter(iter0.intersperse(Iter.of(-1)))([])
-    await expectAsyncIter(iter1.intersperse(Iter.of(-1)))([1])
-    await expectAsyncIter(iter3.intersperse(Iter.of(-1)))([1, -1, 2, -1, 3])
-    await expectAsyncIter(iter3.intersperse(Iter.of(-1, -2)))([1, -1, -2, 2, -1, -2, 3])
-    await expectAsyncIter(AsyncIter.fromIterable('ABC').intersperse(Iter.of('ab')))([
-      'A',
-      'ab',
-      'B',
-      'ab',
-      'C'
-    ])
+    await expectAsyncIter(iter0.intersperse(iter.of(-1)))([])
+    await expectAsyncIter(iter1.intersperse(iter.of(-1)))([1])
+    await expectAsyncIter(iter3.intersperse(iter.of(-1)))([1, -1, 2, -1, 3])
+    await expectAsyncIter(iter3.intersperse(iter.of(-1, -2)))([1, -1, -2, 2, -1, -2, 3])
+    await expectAsyncIter(
+      iter('ABC')
+        .toAsync()
+        .intersperse(iter.of('ab'))
+    )(['A', 'ab', 'B', 'ab', 'C'])
   })
 
   test('mkGroup', async () => {
-    await expectAsyncIter(AsyncIter.empty.mkGroup('(#', ',', '#)'))(['(', '#', '#', ')'])
-    await expectAsyncIter(AsyncIter.of('A').mkGroup('(', ',', ')'))(['(', 'A', ')'])
-    await expectAsyncIter(AsyncIter.fromIterable('ABC').mkGroup('(', ',', ')'))([
-      '(',
-      'A',
-      ',',
-      'B',
-      ',',
-      'C',
-      ')'
-    ])
+    await expectAsyncIter(asyncIter.empty.mkGroup('(#', ',', '#)'))(['(', '#', '#', ')'])
+    await expectAsyncIter(
+      iter
+        .of('A')
+        .toAsync()
+        .mkGroup('(', ',', ')')
+    )(['(', 'A', ')'])
+    await expectAsyncIter(
+      iter('ABC')
+        .toAsync()
+        .mkGroup('(', ',', ')')
+    )(['(', 'A', ',', 'B', ',', 'C', ')'])
   })
 
   test('toString', () => {
@@ -498,9 +576,9 @@ describe('AsyncIter', () => {
     expect(iterInf.toString()).toEqual('[AsyncIter]')
   })
 
-  test('join to string', async () => {
-    expect(await iter0.join()).toEqual('')
-    expect(await iter1.join()).toEqual('1')
-    expect(await iter3.join()).toEqual('123')
-  })
+  // test('join to string', async () => {
+  //   expect(await iter0.join()).toEqual('')
+  //   expect(await iter1.join()).toEqual('1')
+  //   expect(await iter3.join()).toEqual('123')
+  // })
 })

@@ -1,24 +1,21 @@
 import { isEven } from './test-utils'
-import { FolderT, Iter, Folds, Fold } from '../src/lib/public/iternal'
+import { Collector, iter, Collectors } from '../src/lib/public/iternal'
 
 const ExpectThrow = Symbol()
 type ExpectThrow = typeof ExpectThrow
 
-const compare = <I, O>(
-  folder: FolderT<I, O>,
-  ...is: [Iterable<I>, O | ExpectThrow][]
-) =>
+const compare = <I, O>(collector: Collector<I, O>, ...is: [Iterable<I>, O | ExpectThrow][]) =>
   is.forEach(([i, o]) => {
     if (o === ExpectThrow) {
-      return expect(() => Fold.fold(i, folder)).toThrow()
+      return expect(() => iter(i).collect(collector)).toThrow()
     }
-    expect(Fold.fold(i, folder)).toEqual(o)
+    expect(iter(i).collect(collector)).toEqual(o)
   })
 
-describe('Fold', () => {
+describe('Collect', () => {
   test('and', () => {
     compare(
-      Folds.and,
+      Collectors.and,
       [[], true],
       [[true], true],
       [[false], false],
@@ -31,7 +28,7 @@ describe('Fold', () => {
 
   test('or', () => {
     compare(
-      Folds.or,
+      Collectors.or,
       [[], false],
       [[true], true],
       [[false], false],
@@ -44,44 +41,44 @@ describe('Fold', () => {
 
   test('sum', () => {
     compare(
-      Folds.sum,
+      Collectors.sum,
       [[], 0],
       [[0], 0],
       [[10], 10],
       [[10, 20], 30],
       [[-10.5, 10.5], 0],
-      [Iter.range(1, 50), 1225]
+      [iter.range(1, 50), 1225]
     )
   })
 
   test('product', () => {
     compare(
-      Folds.product,
+      Collectors.product,
       [[], 1],
       [[0], 0],
       [[10], 10],
       [[10, 20], 200],
       [[-10, 10], -100],
-      [Iter.range(1, 10), 362880],
-      [Iter.nats, 0]
+      [iter.range(1, 10), 362880],
+      [iter.nats, 0]
     )
   })
 
   test('average', () => {
     compare(
-      Folds.average,
+      Collectors.average,
       [[], 0],
       [[0], 0],
       [[10], 10],
       [[10, 20], 15],
       [[-10.5, 10.5], 0],
-      [Iter.range(1, 50), 25]
+      [iter.range(1, 50), 25]
     )
   })
 
   test('contains', () => {
     compare(
-      Folds.contains('#'),
+      Collectors.contains('#'),
       ['', false],
       ['a', false],
       ['#', true],
@@ -91,116 +88,81 @@ describe('Fold', () => {
   })
 
   test('count', () => {
-    compare<any, number>(
-      Folds.count,
-      ['', 0],
-      ['a', 1],
-      [Iter.range(0, 50), 50]
-    )
+    compare<any, number>(Collectors.count, ['', 0], ['a', 1], [iter.range(0, 50), 50])
   })
 
   test('elemAt', () => {
     compare<any, any>(
-      Folds.elemAt(1),
+      Collectors.elemAt(1),
       ['', ExpectThrow],
       ['a', ExpectThrow],
       ['ab', 'b'],
       ['abc', 'b']
     )
-    compare(
-      Folds.elemAt(1, 'X'),
-      ['', 'X'],
-      ['a', 'X'],
-      ['ab', 'b'],
-      ['abc', 'b']
-    )
-    compare(
-      Folds.elemAt(1, () => 'X'),
-      ['', 'X'],
-      ['a', 'X'],
-      ['ab', 'b'],
-      ['abc', 'b']
-    )
+    compare(Collectors.elemAt(1, 'X'), ['', 'X'], ['a', 'X'], ['ab', 'b'], ['abc', 'b'])
+    compare(Collectors.elemAt(1, () => 'X'), ['', 'X'], ['a', 'X'], ['ab', 'b'], ['abc', 'b'])
   })
 
   test('every', () => {
     compare(
-      Folds.every(isEven),
+      Collectors.every(isEven),
       [[], true],
       [[0], true],
       [[1], false],
       [[0, 2, 4], true],
       [[0, 2, 5], false],
-      [Iter.range(0, 100, 2), true]
+      [iter.range(0, 100, 2), true]
     )
   })
 
   test('some', () => {
     compare(
-      Folds.some(isEven),
+      Collectors.some(isEven),
       [[], false],
       [[0], true],
       [[1], false],
       [[1, 3, 5], false],
       [[1, 2, 6], true],
-      [Iter.range(0, 100, 2), true],
-      [Iter.range(1, 100, 2), false]
+      [iter.range(0, 100, 2), true],
+      [iter.range(1, 100, 2), false]
     )
   })
 
   test('first', () => {
-    compare(Folds.first(), ['', ExpectThrow], ['a', 'a'], ['abc', 'a'])
-    compare(Folds.first('X'), ['', 'X'], ['a', 'a'], ['abc', 'a'])
-    compare(Folds.first(() => 'X'), ['', 'X'], ['a', 'a'], ['abc', 'a'])
+    compare(Collectors.first(), ['', ExpectThrow], ['a', 'a'], ['abc', 'a'])
+    compare(Collectors.first('X'), ['', 'X'], ['a', 'a'], ['abc', 'a'])
+    compare(Collectors.first(() => 'X'), ['', 'X'], ['a', 'a'], ['abc', 'a'])
   })
 
   test('last', () => {
-    compare(Folds.last(), ['', ExpectThrow], ['a', 'a'], ['abc', 'c'])
-    compare(Folds.last('X'), ['', 'X'], ['a', 'a'], ['abc', 'c'])
-    compare(Folds.last(() => 'X'), ['', 'X'], ['a', 'a'], ['abc', 'c'])
+    compare(Collectors.last(), ['', ExpectThrow], ['a', 'a'], ['abc', 'c'])
+    compare(Collectors.last('X'), ['', 'X'], ['a', 'a'], ['abc', 'c'])
+    compare(Collectors.last(() => 'X'), ['', 'X'], ['a', 'a'], ['abc', 'c'])
   })
 
   test('find', () => {
     compare(
-      Folds.find(isEven),
+      Collectors.find(isEven),
       [[], ExpectThrow],
       [[1], ExpectThrow],
       [[0], 0],
       [[1, 3, 4], 4]
     )
-    compare(
-      Folds.find(isEven, -10),
-      [[], -10],
-      [[1], -10],
-      [[0], 0],
-      [[1, 3, 4], 4]
-    )
-    compare(
-      Folds.find(isEven, () => -10),
-      [[], -10],
-      [[1], -10],
-      [[0], 0],
-      [[1, 3, 4], 4]
-    )
+    compare(Collectors.find(isEven, -10), [[], -10], [[1], -10], [[0], 0], [[1, 3, 4], 4])
+    compare(Collectors.find(isEven, () => -10), [[], -10], [[1], -10], [[0], 0], [[1, 3, 4], 4])
   })
 
   test('findLast', () => {
     compare(
-      Folds.findLast(isEven),
+      Collectors.findLast(isEven),
       [[], ExpectThrow],
       [[1], ExpectThrow],
       [[0], 0],
       [[0, 2, 3, 4], 4]
     )
+    compare(Collectors.findLast(isEven, -10), [[], -10], [[1], -10], [[0], 0], [[0, 2, 3, 4], 4])
     compare(
-      Folds.findLast(isEven, -10),
-      [[], -10],
-      [[1], -10],
-      [[0], 0],
-      [[0, 2, 3, 4], 4]
-    )
-    compare(
-      Folds.findLast(isEven, () => -10),
+      Collectors.findLast(isEven, () => -10),
       [[], -10],
       [[1], -10],
       [[0], 0],
@@ -210,7 +172,7 @@ describe('Fold', () => {
 
   test('histogram', () => {
     compare(
-      Folds.histogram(),
+      Collectors.histogram(),
       ['', new Map()],
       ['a', new Map([['a', 1]])],
       ['ab', new Map([['a', 1], ['b', 1]])],
@@ -220,7 +182,7 @@ describe('Fold', () => {
 
   // test('elementsByFreq', () => {
   //   compare(
-  //     Folds.elementsByFreq<string>(),
+  //     Collectors.elementsByFreq<string>(),
   //     ['', new Map()],
   //     ['a', new Map([[1, new Set(['a'])]])],
   //     ['aa', new Map([[2, new Set(['a'])]])],
@@ -230,7 +192,7 @@ describe('Fold', () => {
 
   test('groupBy', () => {
     compare(
-      Folds.groupBy((v: number) => v % 3),
+      Collectors.groupBy((v: number) => v % 3),
       [[], new Map()],
       [[1], new Map([[1, [1]]])],
       [[1, 5], new Map([[1, [1]], [2, [5]]])],
@@ -241,7 +203,7 @@ describe('Fold', () => {
 
   test('groupByUnique', () => {
     compare(
-      Folds.groupByUnique((v: number) => v % 3),
+      Collectors.groupByUnique((v: number) => v % 3),
       [[], new Map()],
       [[1], new Map([[1, new Set([1])]])],
       [[1, 5], new Map([[1, new Set([1])], [2, new Set([5])]])],
@@ -251,24 +213,24 @@ describe('Fold', () => {
   })
 
   test('hasValue', () => {
-    compare(Folds.hasValue, [[], false], [[1], true], [[1, 2, 3], true])
+    compare(Collectors.hasValue, [[], false], [[1], true], [[1, 2, 3], true])
   })
 
   test('noValue', () => {
-    compare(Folds.noValue, [[], true], [[1], false], [[1, 2, 3], false])
+    compare(Collectors.noValue, [[], true], [[1], false], [[1, 2, 3], false])
   })
 
   test('stringAppend', () => {
-    compare(Folds.stringAppend, ['', ''], ['a', 'a'], ['abc', 'abc'])
+    compare(Collectors.stringAppend, ['', ''], ['a', 'a'], ['abc', 'abc'])
   })
 
   test('stringPrepend', () => {
-    compare(Folds.stringPrepend, ['', ''], ['a', 'a'], ['abc', 'cba'])
+    compare(Collectors.stringPrepend, ['', ''], ['a', 'a'], ['abc', 'cba'])
   })
 
   test('choose', () => {
     compare(
-      Folds.choose((chosen, next) => isEven(chosen + next)),
+      Collectors.choose((chosen, next) => isEven(chosen + next)),
       [[], ExpectThrow],
       [[0], 0],
       [[0, 1], 0],
@@ -280,7 +242,7 @@ describe('Fold', () => {
 
   test('min', () => {
     compare(
-      Folds.min(),
+      Collectors.min(),
       [[], ExpectThrow],
       [[0], 0],
       [[5, 3], 3],
@@ -291,7 +253,7 @@ describe('Fold', () => {
 
   test('max', () => {
     compare(
-      Folds.max(),
+      Collectors.max(),
       [[], ExpectThrow],
       [[0], 0],
       [[5, 3], 5],
@@ -302,7 +264,7 @@ describe('Fold', () => {
 
   test('minBy', () => {
     compare(
-      Folds.minBy((v: string) => v.length),
+      Collectors.minBy((v: string) => v.length),
       [[], ExpectThrow],
       [[''], ''],
       [['ta', 't'], 't'],
@@ -313,7 +275,7 @@ describe('Fold', () => {
 
   test('maxBy', () => {
     compare(
-      Folds.maxBy((v: string) => v.length),
+      Collectors.maxBy((v: string) => v.length),
       [[], ExpectThrow],
       [[''], ''],
       [['ta', 't'], 'ta'],
@@ -324,7 +286,7 @@ describe('Fold', () => {
 
   test('range', () => {
     compare(
-      Folds.range,
+      Collectors.range,
       [[], ExpectThrow],
       [[0], [0, 0]],
       [[1, 0], [0, 1]],
@@ -334,7 +296,7 @@ describe('Fold', () => {
 
   test('toObject', () => {
     compare(
-      Folds.toObject(),
+      Collectors.toObject(),
       [[], {}],
       [[['a', 1]], { a: 1 }],
       [[['b', 2]], { b: 2 }],
@@ -344,7 +306,7 @@ describe('Fold', () => {
 
   test('toSet', () => {
     compare(
-      Folds.toSet(),
+      Collectors.toSet(),
       [[], new Set()],
       [[1], new Set([1])],
       [[1, 2], new Set([1, 2])],
@@ -354,7 +316,7 @@ describe('Fold', () => {
 
   test('toMap', () => {
     compare(
-      Folds.toMap(),
+      Collectors.toMap(),
       [[], new Map()],
       [[[1, 1]], new Map([[1, 1]])],
       [[[1, 1], [2, 2]], new Map([[1, 1], [2, 2]])]
@@ -362,12 +324,12 @@ describe('Fold', () => {
   })
 
   test('toArray', () => {
-    compare(Folds.toArray(), [[], []], [[1], [1]], [[1, 2], [1, 2]])
+    compare(Collectors.toArray(), [[], []], [[1], [1]], [[1, 2], [1, 2]])
   })
 
   test('partition', () => {
     compare(
-      Folds.partition(isEven),
+      Collectors.partition(isEven),
       [[], [[], []]],
       [[1], [[], [1]]],
       [[2], [[2], []]],
@@ -377,7 +339,7 @@ describe('Fold', () => {
 
   test('combine', () => {
     compare(
-      Fold.combine(Folds.sum, Folds.product),
+      Collector.combine(Collectors.sum, Collectors.product),
       [[], [0, 1]],
       [[1], [1, 1]],
       [[2, 3], [5, 6]],
@@ -386,10 +348,10 @@ describe('Fold', () => {
   })
 })
 
-describe('FoldIter', () => {
+describe('CollectIter', () => {
   test('sum', () => {
-    expect([...Fold.foldIter([], Folds.sum)]).toEqual([])
-    expect([...Fold.foldIter([1], Folds.sum)]).toEqual([1])
-    expect([...Fold.foldIter([1, 3, 6], Folds.sum)]).toEqual([1, 4, 10])
+    expect([...iter(new Array<number>()).collectIter(Collectors.sum)]).toEqual([])
+    expect([...iter([1]).collectIter(Collectors.sum)]).toEqual([1])
+    expect([...iter([1, 3, 6]).collectIter(Collectors.sum)]).toEqual([1, 4, 10])
   })
 })

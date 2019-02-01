@@ -1,14 +1,14 @@
-import { Iter } from '../src/lib/public/iternal'
+import { Iter, iter } from '../src/lib/public/iternal'
 import { addIndex, double, isEven, isOdd, less3, remove, sum } from './test-utils'
 
 const expectIter = <T>(iter: Iter<T>) => (resIt: Iterable<T>) =>
   expect(iter.toArray()).toEqual([...resIt])
 
 describe('Iter', () => {
-  const iter0 = Iter.empty
-  const iter1 = Iter.of(1)
-  const iter3 = Iter.of(1, 2, 3)
-  const iterInf = Iter.nats
+  const iter0 = iter.empty
+  const iter1 = iter.of(1)
+  const iter3 = iter.of(1, 2, 3)
+  const iterInf = iter.nats
 
   test('simple', () => {
     expectIter(iter0)([])
@@ -17,27 +17,27 @@ describe('Iter', () => {
   })
 
   test('creation', () => {
-    expectIter(Iter.of(1, 2, 3))([1, 2, 3])
-    expectIter(Iter.arrayEntries([1, 2, 3]))([[0, 1], [1, 2], [2, 3]])
-    expectIter(Iter.mapEntries(new Map([[1, 11], [2, 12]])))([[1, 11], [2, 12]])
-    expectIter(Iter.mapKeys(new Map([[1, 11], [2, 12]])))([1, 2])
-    expectIter(Iter.mapValues(new Map([[1, 11], [2, 12]])))([11, 12])
-    expectIter(Iter.objectEntries({ a: 1, b: 2 }))([['a', 1], ['b', 2]])
-    expectIter(Iter.objectKeys({ a: 1, b: 2 }))(['a', 'b'])
-    expectIter(Iter.objectValues({ a: 1, b: 2 }))([1, 2])
-    expectIter(Iter.generate(0, v => v + 1).take(5))([0, 1, 2, 3, 4])
-    expectIter(Iter.unfold(0, v => [v * 2, v + 1]).take(3))([0, 2, 4])
-    expectIter(Iter.fromLazy(() => 1))([1])
-    expectIter(Iter.nats.take(3))([0, 1, 2])
-    expectIter(Iter.range(0, 6, 2))([0, 2, 4])
-    expectIter(Iter.range(6, 0, -2))([6, 4, 2])
-    expectIter(Iter.range(0.0, 0.5, 0.2))([0.0, 0.2, 0.4])
-    const [s1, s2] = Iter.symbols
+    expectIter(iter.of(1, 2, 3))([1, 2, 3])
+    expectIter(iter.arrayEntries([1, 2, 3]))([[0, 1], [1, 2], [2, 3]])
+    expectIter(iter.mapEntries(new Map([[1, 11], [2, 12]])))([[1, 11], [2, 12]])
+    expectIter(iter.mapKeys(new Map([[1, 11], [2, 12]])))([1, 2])
+    expectIter(iter.mapValues(new Map([[1, 11], [2, 12]])))([11, 12])
+    expectIter(iter.objectEntries({ a: 1, b: 2 }))([['a', 1], ['b', 2]])
+    expectIter(iter.objectKeys({ a: 1, b: 2 }))(['a', 'b'])
+    expectIter(iter.objectValues({ a: 1, b: 2 }))([1, 2])
+    expectIter(iter.generate(0, v => v + 1).take(5))([0, 1, 2, 3, 4])
+    expectIter(iter.unfold(0, v => [v * 2, v + 1]).take(3))([0, 2, 4])
+    expectIter(iter.fromLazy(() => 1))([1])
+    expectIter(iter.nats.take(3))([0, 1, 2])
+    expectIter(iter.range(0, 6, 2))([0, 2, 4])
+    expectIter(iter.range(6, 0, -2))([6, 4, 2])
+    expectIter(iter.range(0.0, 0.5, 0.2))([0.0, 0.2, 0.4])
+    const [s1, s2] = iter.symbols
     expect(s1).not.toEqual(s2)
-    expectIter(Iter.indexedReversed('abc'))(['c', 'b', 'a'])
-    expectIter(Iter.indexedReversed([1, 2, 3]))([3, 2, 1])
-    expectIter(Iter.indexedBounce('abc'))(['a', 'b', 'c', 'b'])
-    expectIter(Iter.indexedBounce('abcd'))(['a', 'b', 'c', 'd', 'c', 'b'])
+    expectIter(iter.indexedReversed('abc'))(['c', 'b', 'a'])
+    expectIter(iter.indexedReversed([1, 2, 3]))([3, 2, 1])
+    expectIter(iter.indexedBounce('abc'))(['a', 'b', 'c', 'b'])
+    expectIter(iter.indexedBounce('abcd'))(['a', 'b', 'c', 'd', 'c', 'b'])
   })
 
   test('forEach', () => {
@@ -61,7 +61,7 @@ describe('Iter', () => {
   test('filter', () => {
     expectIter(iter0.filter(isEven))([])
     expectIter(iter1.filter(isEven))([])
-    expectIter(Iter.of(2).filter(isEven))([2])
+    expectIter(iter.of(2).filter(isEven))([2])
     expectIter(iter3.filter(isEven))([2])
     expectIter(iterInf.filter(isEven).take(3))([0, 2, 4])
   })
@@ -69,7 +69,7 @@ describe('Iter', () => {
   test('filterNot', () => {
     expectIter(iter0.filterNot(isEven))([])
     expectIter(iter1.filterNot(isEven))([1])
-    expectIter(Iter.of(2).filterNot(isEven))([])
+    expectIter(iter.of(2).filterNot(isEven))([])
     expectIter(iter3.filterNot(isEven))([1, 3])
     expectIter(iterInf.filterNot(isEven).take(3))([1, 3, 5])
   })
@@ -103,26 +103,16 @@ describe('Iter', () => {
     expectIter(iter0.filterChanged())([])
     expectIter(iter1.filterChanged())([1])
     expectIter(iter3.filterChanged())([1, 2, 3])
-    expectIter(Iter.of(1, 2, 2, 3, 3, 1, 3, 3, 3).filterChanged())([1, 2, 3, 1, 3])
+    expectIter(iter.of(1, 2, 2, 3, 3, 1, 3, 3, 3).filterChanged())([1, 2, 3, 1, 3])
   })
 
   test('flatMap', () => {
-    const toIter = (v: any) => Iter.of(v, v)
+    const toIter = (v: any) => iter.of(v, v)
 
     expectIter(iter0.flatMap(toIter))([])
     expectIter(iter1.flatMap(toIter))([1, 1])
     expectIter(iter3.flatMap(toIter))([1, 1, 2, 2, 3, 3])
     expectIter(iterInf.flatMap(toIter).take(4))([0, 0, 1, 1])
-  })
-
-  test('collect', () => {
-    const evenToString = (v: number) => (isEven(v) ? '' + v : undefined)
-
-    expectIter(iter0.collect(evenToString))([])
-    expectIter(iter1.collect(evenToString))([])
-    expectIter(Iter.of(2).collect(evenToString))(['2'])
-    expectIter(iter3.collect(evenToString))(['2'])
-    expectIter(iterInf.collect(evenToString).take(3))(['0', '2', '4'])
   })
 
   test('concat', () => {
@@ -159,6 +149,18 @@ describe('Iter', () => {
     expectIter(iterInf.drop(10).take(3))([10, 11, 12])
   })
 
+  test('dropLast', () => {
+    expectIter(iter0.dropLast(0))([])
+    expectIter(iter0.dropLast(3))([])
+    expectIter(iter1.dropLast(0))([1])
+    expectIter(iter1.dropLast(1))([])
+    expectIter(iter1.dropLast(3))([])
+    expectIter(iter3.dropLast(0))([1, 2, 3])
+    expectIter(iter3.dropLast(1))([1, 2])
+    expectIter(iter3.dropLast(2))([1])
+    expectIter(iter.range(0, 10).dropLast(6))([0, 1, 2, 3])
+  })
+
   test('take', () => {
     expectIter(iter0.take(10))([])
     expectIter(iter1.take(10))([1])
@@ -167,6 +169,18 @@ describe('Iter', () => {
     expectIter(iter3.take(0))([])
     expectIter(iter3.take(2))([1, 2])
     expectIter(iterInf.take(3))([0, 1, 2])
+  })
+
+  test('takeLast', () => {
+    expectIter(iter0.takeLast(0))([])
+    expectIter(iter0.takeLast(3))([])
+    expectIter(iter1.takeLast(0))([])
+    expectIter(iter1.takeLast(1))([1])
+    expectIter(iter1.takeLast(3))([1])
+    expectIter(iter3.takeLast(0))([])
+    expectIter(iter3.takeLast(1))([3])
+    expectIter(iter3.takeLast(2))([2, 3])
+    expectIter(iter.range(0, 10).takeLast(6))([4, 5, 6, 7, 8, 9])
   })
 
   test('slice', () => {
@@ -182,9 +196,9 @@ describe('Iter', () => {
 
   test('indicesOf', () => {
     expectIter(iter0.indicesOf(0))([])
-    expectIter(Iter.fromIterable('a').indicesOf('a'))([0])
-    expectIter(Iter.fromIterable('a').indicesOf('b'))([])
-    expectIter(Iter.fromIterable('babbaab').indicesOf('a'))([1, 4, 5])
+    expectIter(iter('a').indicesOf('a'))([0])
+    expectIter(iter('a').indicesOf('b'))([])
+    expectIter(iter('babbaab').indicesOf('a'))([1, 4, 5])
   })
 
   test('takeWhile', () => {
@@ -272,7 +286,7 @@ describe('Iter', () => {
     expectIter(iter3.interleaveAll(iter0))([1, 2, 3])
     expectIter(iter3.interleaveAll(iter1))([1, 1, 2, 3])
     expectIter(iter3.interleaveAll(iter3))([1, 1, 2, 2, 3, 3])
-    expectIter(iter3.interleaveAll(Iter.range(10, 15), Iter.of(100)))([
+    expectIter(iter3.interleaveAll(iter.range(10, 15), iter.of(100)))([
       1,
       10,
       100,
@@ -289,7 +303,7 @@ describe('Iter', () => {
     expectIter(iter0.interleaveRound(iter0))([])
     expectIter(iter0.interleaveRound(iter1))([])
     expectIter(iter1.interleaveRound(iter0))([])
-    expectIter(iter1.interleaveRound(Iter.of(2)).take(5))([1, 2, 1, 2, 1])
+    expectIter(iter1.interleaveRound(iter.of(2)).take(5))([1, 2, 1, 2, 1])
     expectIter(iter1.interleaveRound(iter3).take(8))([1, 1, 1, 2, 1, 3, 1, 1])
   })
 
@@ -362,19 +376,19 @@ describe('Iter', () => {
     expectIter(iter0.patchAt(0, 0, () => iter1))([1])
     expectIter(iter0.patchAt(0, 10, () => iter1))([1])
     expectIter(iter0.patchAt(-10, 0, () => iter1))([1])
-    expectIter(iter1.patchAt(-10, 0, () => Iter.of(2)))([2, 1])
-    expectIter(iter1.patchAt(-10, 10, () => Iter.of(2)))([2])
-    expectIter(iter1.patchAt(0, 0, () => Iter.of(2)))([2, 1])
-    expectIter(iter1.patchAt(1, 0, () => Iter.of(2)))([1, 2])
-    expectIter(iter1.patchAt(10, 10, () => Iter.of(2)))([1, 2])
-    expectIter(iter1.patchAt(100, 0, () => Iter.of(2)))([1, 2])
-    expectIter(iter3.patchAt(-10, 0, () => Iter.of(9)))([9, 1, 2, 3])
-    expectIter(iter3.patchAt(0, 0, () => Iter.of(9)))([9, 1, 2, 3])
-    expectIter(iter3.patchAt(1, 0, () => Iter.of(9)))([1, 9, 2, 3])
-    expectIter(iter3.patchAt(100, 0, () => Iter.of(9)))([1, 2, 3, 9])
-    expectIter(iter3.patchAt(0, 1, () => Iter.of(9)))([9, 2, 3])
-    expectIter(iter3.patchAt(1, 1, () => Iter.of(9)))([1, 9, 3])
-    expectIter(iter3.patchAt(100, 1, () => Iter.of(9)))([1, 2, 3, 9])
+    expectIter(iter1.patchAt(-10, 0, () => iter.of(2)))([2, 1])
+    expectIter(iter1.patchAt(-10, 10, () => iter.of(2)))([2])
+    expectIter(iter1.patchAt(0, 0, () => iter.of(2)))([2, 1])
+    expectIter(iter1.patchAt(1, 0, () => iter.of(2)))([1, 2])
+    expectIter(iter1.patchAt(10, 10, () => iter.of(2)))([1, 2])
+    expectIter(iter1.patchAt(100, 0, () => iter.of(2)))([1, 2])
+    expectIter(iter3.patchAt(-10, 0, () => iter.of(9)))([9, 1, 2, 3])
+    expectIter(iter3.patchAt(0, 0, () => iter.of(9)))([9, 1, 2, 3])
+    expectIter(iter3.patchAt(1, 0, () => iter.of(9)))([1, 9, 2, 3])
+    expectIter(iter3.patchAt(100, 0, () => iter.of(9)))([1, 2, 3, 9])
+    expectIter(iter3.patchAt(0, 1, () => iter.of(9)))([9, 2, 3])
+    expectIter(iter3.patchAt(1, 1, () => iter.of(9)))([1, 9, 3])
+    expectIter(iter3.patchAt(100, 1, () => iter.of(9)))([1, 2, 3, 9])
   })
 
   test('patchWhere', () => {
@@ -396,24 +410,24 @@ describe('Iter', () => {
   })
 
   test('patchWhere amount', () => {
-    expectIter(iter0.patchWhere(isEven, 1, () => Iter.of(10), 1))([])
-    expectIter(iter1.patchWhere(isEven, 0, () => Iter.of(10), 1))([1])
-    expectIter(iter1.patchWhere(isOdd, 0, () => Iter.of(10), 1))([10, 1])
-    expectIter(iter1.patchWhere(isOdd, 1, () => Iter.of(10), 1))([10])
-    expectIter(Iter.range(0, 5).patchWhere(isOdd, 1, () => Iter.of(10), 1))([0, 10, 2, 3, 4])
-    expectIter(Iter.range(0, 5).patchWhere(isOdd, 0, () => Iter.of(10), 1))([0, 10, 1, 2, 3, 4])
-    expectIter(Iter.range(0, 6).patchWhere(isOdd, 1, () => Iter.of(10), 2))([0, 10, 2, 10, 4, 5])
-    expectIter(Iter.range(0, 6).patchWhere(isOdd, 1, undefined, 2))([0, 2, 4, 5])
+    expectIter(iter0.patchWhere(isEven, 1, () => iter.of(10), 1))([])
+    expectIter(iter1.patchWhere(isEven, 0, () => iter.of(10), 1))([1])
+    expectIter(iter1.patchWhere(isOdd, 0, () => iter.of(10), 1))([10, 1])
+    expectIter(iter1.patchWhere(isOdd, 1, () => iter.of(10), 1))([10])
+    expectIter(iter.range(0, 5).patchWhere(isOdd, 1, () => iter.of(10), 1))([0, 10, 2, 3, 4])
+    expectIter(iter.range(0, 5).patchWhere(isOdd, 0, () => iter.of(10), 1))([0, 10, 1, 2, 3, 4])
+    expectIter(iter.range(0, 6).patchWhere(isOdd, 1, () => iter.of(10), 2))([0, 10, 2, 10, 4, 5])
+    expectIter(iter.range(0, 6).patchWhere(isOdd, 1, undefined, 2))([0, 2, 4, 5])
   })
 
   test('patchElem amount', () => {
-    expectIter(Iter.fromIterable('').patchElem('a', 0, 'ab', 1))('')
-    expectIter(Iter.fromIterable('a').patchElem('a', 0, 'XX', 1))('XXa')
-    expectIter(Iter.fromIterable('a').patchElem('a', 1, 'XX', 1))('XX')
-    expectIter(Iter.fromIterable('b').patchElem('a', 0, 'XX', 1))('b')
-    expectIter(Iter.fromIterable('bac').patchElem('a', 0, 'XX', 1))('bXXac')
-    expectIter(Iter.fromIterable('bacadata').patchElem('a', 0, 'XX', 2))('bXXacXXadata')
-    expectIter(Iter.fromIterable('bacadata').patchElem('a', 1, 'XX', 2))('bXXcXXdata')
+    expectIter(iter('').patchElem('a', 0, 'ab', 1))('')
+    expectIter(iter('a').patchElem('a', 0, 'XX', 1))('XXa')
+    expectIter(iter('a').patchElem('a', 1, 'XX', 1))('XX')
+    expectIter(iter('b').patchElem('a', 0, 'XX', 1))('b')
+    expectIter(iter('bac').patchElem('a', 0, 'XX', 1))('bXXac')
+    expectIter(iter('bacadata').patchElem('a', 0, 'XX', 2))('bXXacXXadata')
+    expectIter(iter('bacadata').patchElem('a', 1, 'XX', 2))('bXXcXXdata')
   })
 
   test('splitWhere', () => {
@@ -426,24 +440,24 @@ describe('Iter', () => {
 
   test('splitOnElem', () => {
     expectIter(iter0.splitOnElem(1))([])
-    expectIter(Iter.fromIterable('po po').splitOnElem(' '))([['p', 'o'], ['p', 'o']])
-    expectIter(Iter.fromIterable('po  po').splitOnElem(' '))([['p', 'o'], [], ['p', 'o']])
-    expectIter(Iter.fromIterable(' po').splitOnElem(' '))([[], ['p', 'o']])
-    expectIter(Iter.fromIterable('po ').splitOnElem(' '))([['p', 'o'], []])
+    expectIter(iter('po po').splitOnElem(' '))([['p', 'o'], ['p', 'o']])
+    expectIter(iter('po  po').splitOnElem(' '))([['p', 'o'], [], ['p', 'o']])
+    expectIter(iter(' po').splitOnElem(' '))([[], ['p', 'o']])
+    expectIter(iter('po ').splitOnElem(' '))([['p', 'o'], []])
   })
 
   test('intersperse', () => {
-    expectIter(iter0.intersperse(Iter.of(-1)))([])
-    expectIter(iter1.intersperse(Iter.of(-1)))([1])
-    expectIter(iter3.intersperse(Iter.of(-1)))([1, -1, 2, -1, 3])
-    expectIter(iter3.intersperse(Iter.of(-1, -2)))([1, -1, -2, 2, -1, -2, 3])
-    expectIter(Iter.fromIterable('ABC').intersperse(Iter.of('ab')))(['A', 'ab', 'B', 'ab', 'C'])
+    expectIter(iter0.intersperse(iter.of(-1)))([])
+    expectIter(iter1.intersperse(iter.of(-1)))([1])
+    expectIter(iter3.intersperse(iter.of(-1)))([1, -1, 2, -1, 3])
+    expectIter(iter3.intersperse(iter.of(-1, -2)))([1, -1, -2, 2, -1, -2, 3])
+    expectIter(iter('ABC').intersperse(iter.of('ab')))(['A', 'ab', 'B', 'ab', 'C'])
   })
 
   test('mkGroup', () => {
-    expectIter(Iter.empty.mkGroup('(#', ',', '#)'))(['(', '#', '#', ')'])
-    expectIter(Iter.of('a').mkGroup('(', ',', ')'))(['(', 'a', ')'])
-    expectIter(Iter.fromIterable('abc').mkGroup('(', ',', ')'))(['(', 'a', ',', 'b', ',', 'c', ')'])
+    expectIter(iter.empty.mkGroup('(#', ',', '#)'))(['(', '#', '#', ')'])
+    expectIter(iter.of('a').mkGroup('(', ',', ')'))(['(', 'a', ')'])
+    expectIter(iter('abc').mkGroup('(', ',', ')'))(['(', 'a', ',', 'b', ',', 'c', ')'])
   })
 
   test('toString', () => {
