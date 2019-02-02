@@ -1,4 +1,4 @@
-import { AnyIterable, AnyIterator, Pred, MonitorEffect } from '../../public/constants'
+import { AnyIterable, AnyIterator, MonitorEffect, Pred } from '../../public/constants'
 import { Type } from '../util'
 
 export const NoValue: unique symbol = Symbol('NO_VALUE')

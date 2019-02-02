@@ -16,10 +16,10 @@ https://vitoke.github.io/iternal/globals.html
 ### Simple
 
 ```typescript
-import { Iter, Fold, Folds } from 'iternal'
+import { iter, Collectors } from 'iternal'
 
 console.log(
-  Iter.of(1, 3, 5)
+  iter.of(1, 3, 5)
     .map(v => v * 2)
     .repeat(2)
     .toArray()
@@ -30,15 +30,18 @@ console.log(
 
 console.log(
   'The min and max value: ',
-  Fold.fold([8, 3, 6, 7], Folds.range)
+  iter([8, 3, 6, 7], [2, 10, 2]).collect(Collectors.range)
 )
 
-> result: The min and max value:  [ 3, 8 ]
+> result: The min and max value:  [ 3, 10 ]
 
 
 console.log(
   'Average word length:',
-  Fold.fold(['This', 'is', 'a', 'test'], Folds.average.mapInput(w => w.length))
+  iter(['This', 'is', 'a', 'test'])
+    .collect(
+      Collectors.average.mapInput(word => word.length)
+    )
 )
 
 > result: Average word length: 2.75
@@ -47,32 +50,32 @@ console.log(
 ### Advanced
 
 ```typescript
-import { Iter, Fold, Folds } from 'iternal'
+import { iter, Collector, Collectors } from 'iternal'
 
 // rangeBy returns the values for which the function gives the minimum and maximum value
-const shortestAndLongestStringFolder = Folds.rangeBy(w => w.length)
+const shortestAndLongestStringCollector = Collectors.rangeBy<string>(w => w.length)
 
-// mapInput converts some input type into a type the folder understands
-const averageStringLengthFolder = Folds.average.mapInput(w => w.length)
+// mapInput converts some input type into a type the collector understands
+const averageStringLengthCollector = Collectors.average.mapInput<string>(w => w.length)
 
-// We construct a string from the combination of the above two folders
-const verySpecificFolder = Fold.combineWith(
+// We construct a string from the combination of the above two collectors
+const verySpecificCollector = Collector.combineWith(
   ([shortest, longest], avgLen) =>
     `Shortest word: ${shortest}, longest word: ${longest}, average length: ${avgLen}`,
-  shortestAndLongestStringFolder,
-  averageStringLengthFolder
+  shortestAndLongestStringCollector,
+  averageStringLengthCollector
 )
 
 // We create an Iter iterable from a string split
-const words = Iter.fromIterable('This is a very normal sentence'.split(' '))
+const words = iter('This is a very normal sentence'.split(' '))
 
 // Get the final result at once
-console.log( words.fold(verySpecificFolder) )
+console.log(words.collect(verySpecificCollector))
 
 > result: Shortest word: a, longest word: sentence, average length: 4.166666666666666
 
 // Get the results for each new word
-words.foldIter(verySpecificFolder).forEach(v => console.log(v))
+words.collectIter(verySpecificCollector).forEach(v => console.log(v))
 
 > result:
 Shortest word: This, longest word: This, average length: 4
@@ -100,15 +103,15 @@ elements.
    Normally you can choose either to copy all data into one large array and perform the calculation over this array,
    or you can write a function that takes an array and returns an intermediate value, and then combine the results
    of all the arrays. Using Iterables, you can concatenate the arrays, creating a 'virtual' large array without actually
-   copying data. Then, you can define a Fold operation that calculates over all the arrays at once without needing to
+   copying data. Then, you can define a Collector that calculates over all the arrays at once without needing to
    combine intermediate results.
 
 2. Iterables can be edited without actually creating an in-memory copied data structure. This means you can arbitrarily
    insert or remove elements at certain positions, you can map and filter the elements without doing anything in memory.
    You are basically creating imaginary structures that only materialize once you start iterating over the structure.
 
-3. As mentioned before, Iterables can represent infinite data. For example, `Iter.nats` represents all natural integers
-   starting for 0. As long as you are not evaluating (e.g. folding, or performing `.forEach()`) an infinite Iterable,
+3. As mentioned before, Iterables can represent infinite data. For example, `iter.nats` represents all natural integers
+   starting for 0. As long as you are not evaluating (e.g. collecting, or performing `.forEach()`) an infinite Iterable,
    you can safely use them in your code. They are very convenient for use cases like zipping or taking a limited amout.
 
 ### Iterables vs Iterators
@@ -119,23 +122,23 @@ Why?
 
 `Iterables` are predictable and should in principle result in the same values every time an iterable is iterated over.
 On the contrast, `Iterators` have a hidden state, meaning that they can be partially consumed. This can have undesired effects, since using the same `Iterator` multiple times can give different results. Except for Iterables that depend on impure inputs
-(like e.g. `Iter.randomInt()`), `Iterables` should always return the same values. This keeps code functional, pure, and
+(like e.g. `iter.randomInt()`), `Iterables` should always return the same values. This keeps code functional, pure, and
 thus predictable.
 
 The result is that `Iter` and `AsyncIter` provide a predicable and pure functional API on top of Iterables.
 
-## Use the Fold
+## Collect your results
 
-A Fold is a very powerful concept from functional programming that is, in my opinion, underused. It is related to
+A Collector is a very powerful concept, present in languages like Java. It is related to
 Reducers, which since React have become more popular.
 
-A Fold specifies a start state, and a combination function taking some element, and producing a new state. This makes
-a Fold very similar to a `for` loop. Most `for` loops start with some initial values, then loop over something iterable,
+A Collector specifies a start state, and a combination function taking some element, and producing a new state. This makes
+a Collector very similar to a `for` loop. Most `for` loops start with some initial values, then loop over something iterable,
 while modifying the initial values, and, once the iterable is done, return some results based on the final state of the
 variables.
 
-However, because, in contrast to a `for` loop, a Fold is just an object, it can be re-used and composed. This means that,
-once you have written a Fold object, you can use it on any iterable object, and you can compose it with other Folds that
+However, because, in contrast to a `for` loop, a Collector is just an object, it can be re-used and composed. This means that,
+once you have written a Collector, you can use it on any iterable object, and you can compose it with other Collectors that
 will run in 'parallel'. This is impossible using basic `for` loops. That's a major boost to re-usable components.
 
 Let's take some examples:
@@ -156,47 +159,72 @@ function getProduct(array) {
 
 Here we have written 2 functions that can get the sum and product of an array of integers. But what if we want both?
 We can write something like `const [sum, product] = [getSum(someArray), getProduct(someArray)]` but this will process
-the array twice. That should not be necessary.
+the array twice. That should not be necessary. The only way to do it in the above way is to write a new function that
+loops over the array once and calculates both results at once.
 
-Now, using Folds:
+Now, using Collectors:
 
 ```typescript
-// already defined as Folds.sum
-const sumFolder = MonoFolder.create(0, (state, value) => state + value)
+// already defined as Collectors.sum
+const sumCollector = Collector.createMono({ init: 0, next: (state, value) => state + value })
 
-// already defined as Folds.product
-const productFolder = MonoFolder.create(1, (state, value) => state * value)
+// already defined as Collectors.product
+const productCollector = Collector.createMono({ init: 1, next: (state, value) => state * value })
 
-const [sum, product] = Fold.fold(someArray, Fold.combine(sumFolder, productFolder))
+const [sum, product] = iter(someArray).collect(Collector.combine(sumCollector, productCollector))
 ```
 
-Here, `MonoFolder` just means a `Folder` of which the state type is the same as its input and output type (called
+Here, `createMono` just means a Collector of which the state type is the same as its input and output type (called
 Monoid in functional programming).
 
-Now that we have written these Folds, we can also reuse the logic in many different ways. Imagine that we want
-to calculate the sum of all lengths of words in an array. We cannot directly use the `sumFold` defined above,
-since it doesn't handle strings. Instead of converting our array of strings to an array with the lengths of the
-words, we can modify the our Fold to do this conversion 'on the fly':
+Now that we have written these Collectors, we can also reuse the logic in many different ways. Imagine that we want
+to calculate the sum of all lengths of words in an array. We cannot directly use the `sumCollector` defined above,
+since it doesn't handle strings as input. Instead of converting our array of strings to an array with the lengths of the
+words, we can modify the our Collect to do this input conversion 'on the fly':
 
 ```typescript
-const wordLengthSum = sumFolder.mapInput(s => s.length)
+const wordLengthSum = sumCollector.mapInput(word => word.length)
 
-const totalLength = Fold.fold(arrayOfStrings, wordLengthSum)
+const totalLength = iter(arrayOfStrings, someOtherArrayOfStrings).collect(wordLengthSum)
 ```
 
-And again, we can use `Fold.combine` if we want to get multiple results for the array:
+And again, we can use `Collector.combine` if we want to get multiple results for the array:
 
 ```typescript
-const wordLengthAverage = Folds.average.mapInput(s => s.length)
+const wordLengthAverage = Collectors.average.mapInput(word => word.length)
 
-const [totalLength, averageLength] = Fold.fold(arrayOfStrings, Fold.combine(wordLengthSum, wordLengthAverage)
+const [totalLength, averageLength] = iter(arrayOfStrings).collect(
+  Collector.combine(wordLengthSum, wordLengthAverage)
+)
 ```
+
+`iternal` even defines many input modifiers for Collectors that help modifying the input, for exampe:
+
+```typescript
+const aCollector = Collectors.average
+  .mapInput<string>(word => word.length)
+  .sampleInput(2)
+  .dropInput(1)
+  .appendInput('test', 'foo')
+  .filterInput(word => word.length > 2)
+```
+
+This collector will take the average word lengths of the input words, where the input is modified as follows:
+
+- `mapInput` indicates that strings are taken as input, but the length is taken for the average collector
+- `filterInput` removes all words with length less than 3
+- `appendInput` adds the words 'test' and 'foo' to the input
+- `dropInput` skips the first input words
+- `sampleInput` takes every 2nd word of the input
+
+It is interesting to note here that, as the list indicates, most of these operations should be read in backward order, since we are transforming are transforming a given input stream towards our desired input stream.
 
 Hopefully you see that you now probably never have to write a `for` loop over some Iterable again.
 
-### Advanced topic: More powerful and efficient Folds
+### Advanced topic: More powerful and efficient Collectors
 
-The typical functional fold has the benefits descriped above, but also has a number of drawbacks compared to `for` loops:
+A collector is very similar to a function called `fold` or `reduce` in functional programming. However, it solves some of the
+issues that the functional `fold` method has. Issues of the `fold` method compared to a `for` loop are:
 
 1. A functional fold's state type is also the result type, meaning that the state cannot be some intermediate value from which
    a result is derived.
@@ -208,7 +236,7 @@ Let's see how the `iternal` library solves these three drawbacks.
 
 #### Intermediate state
 
-In `iternal`, you can define a function that maps the folder's state to a result of a different type. Imagine the following
+In `iternal`, you can define a function that maps the collector's state to a result of a different type. Imagine the following
 `for` loop:
 
 ```typescript
@@ -221,16 +249,16 @@ function sumIsPrime(someArray) {
 }
 ```
 
-As a Folder:
+As a Collector:
 
 ```typescript
-const sumIsPrime = Folder.create(0, (state, elem) => state + elem, isPrime)
+const sumIsPrime = Collector.createMono({ init: 0, next: (state, elem) => state + elem, isPrime })
 ```
 
-You can actually also do this after the fact with an existing Folder:
+You can actually also do this after the fact with an existing Collector:
 
 ```typescript
-const sumIsPrime2 = sumFolder.mapResult(isPrime)
+const sumIsPrime2 = sumCollector.mapResult(isPrime)
 ```
 
 #### Intermediate return
@@ -252,17 +280,17 @@ function getEfficientProduct(array) {
 We can express the `return` condition in `iternal` by supplying an `escape` predicate as follows:
 
 ```typescript
-const efficientProduct = MonoFolder.create(0, (state, value) => state * value, state => state === 0)
+const efficientProduct = Collector.createMono({ init: 0, next: (state, value) => state * value, state => state === 0 })
 ```
 
-Now, we can run this folder on infinite streams (but only if they somewhere meet the escape condition):
+Now, we can run this collector on infinite streams (but only if they somewhere meet the escape condition):
 
 ```typescript
-Iter.range(-100).fold(efficientProduct)
+iter.range(-100).collect(efficientProduct)
 >> returns 0
 
-// We use the 'inefficient' productFolder we defined earlier
-Iter.range(-100).fold(productFolder)
+// We use the 'inefficient' productCollector we defined earlier
+iter.range(-100).collect(productCollector)
 >> never returns, since it has no escape
 ```
 
@@ -282,41 +310,47 @@ function createObject(array) {
 
 Everytime you call this `createObject` function, you will receive a new object, which is what you expect.
 
-However, let's see what happens using a naive Folder:
+However, let's see what happens using a naive Collector:
 
 ```typescript
-const createObject = Folder.create({}, (state, key) => {
-  state[key] = 'init'
-  return state
+const createObject = Collector.create({
+  init: {},
+  next: (state, key) => {
+    state[key] = 'init'
+    return state
+  }
 })
 
-const result1 = Fold.fold(['a', 'b'], createObject)
+const result1 = iter(['a', 'b']).collect(createObject)
 > result1 = { a: 'init', b: 'init' }
 
-const result2 = Fold.fold(['c'], createObject)
+const result2 = iter(['c']).collect(createObject)
 > result2 = { a: 'init', b: 'init', c: 'init' }
 ```
 
 Ouch, what went wrong here?
 
-Well, since we specified our Folder as a constant that has some object as its initial state, this object will
-be used across all folds, meaning the object will keep collecting new values in this one only object.
+Well, since we specified our Collector as a constant that has some object as its initial state, this object will
+be used across all collect requests, meaning the object will keep collecting new values in this one only object.
 
 Obviously, that is not desirable.
 
 To fix such cases, you can optionally provide a constructor function as the initial state. `iternal` will recognize
-this constructor function, and then create a new object every time the Folder is used:
+this constructor function, and then create a new object every time the Collector is used:
 
 ```typescript
-const fixedCreateObject = Folder.create(() => ({}), (state, key) => {
+const fixedCreateObject = Collector.create({
+  init: () => ({}),
+  next: (state, key) => {
   state[key] = 'init'
   return state
+  }
 })
 
-const result1 = Fold.fold(['a', 'b'], fixedCreateObject)
+const result1 = iter(['a', 'b']).collect(fixedCreateObject)
 > result1 = { a: 'init', b: 'init' }
 
-const result2 = Fold.fold(['c'], fixedCreateObject)
+const result2 = iter(['c']).collect(fixedCreateObject)
 > result2 = { c: 'init' }
 ```
 
