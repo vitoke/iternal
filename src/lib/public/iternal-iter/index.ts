@@ -170,7 +170,7 @@ export class Iter<T> implements Iterable<T> {
    * @example
    * ```typescript
    * iter.of(1, 3, 5).map((value, index) => value + index)
-   * result: (1, 5, 8)
+   * result: (1, 4, 7)
    * ```
    */
   map<R>(mapFun: MapFun<T, R>): Iter<R> {
@@ -1581,7 +1581,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * @example
    * ```typescript
    * asyncIter([1, 3, 5]).map((value, index) => value + index)
-   * result: (1, 5, 8)
+   * result: (1, 4, 7)
    * ```
    */
   map<R>(mapFun: MapFun<T, R>): AsyncIter<R> {

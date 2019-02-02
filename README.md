@@ -252,7 +252,7 @@ function sumIsPrime(someArray) {
 As a Collector:
 
 ```typescript
-const sumIsPrime = Collector.createMono({
+const sumIsPrime: Collector<number, boolean> = Collector.createState({
   init: 0,
   next: (state, elem) => state + elem,
   stateToResult: isPrime
@@ -350,8 +350,8 @@ this constructor function, and then create a new object every time the Collector
 const fixedCreateObject = Collector.create({
   init: () => ({}),  // <-- this line has changed
   next: (state, key) => {
-  state[key] = 'init'
-  return state
+    state[key] = 'init'
+    return state
   }
 })
 
