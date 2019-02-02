@@ -217,7 +217,7 @@ This collector will take the average word lengths of the input words, where the 
 - `dropInput` skips the first input word
 - `sampleInput` takes every 2nd word of the input
 
-It is interesting to note here that, as the list indicates, most of these operations should be read in backward order, since we are transforming are transforming a given input stream towards our desired input stream.
+It is interesting to note here that, as the list indicates, most of these operations should be read in backward order, since we are transforming a given input stream towards our desired input stream.
 
 Hopefully you see that you now probably never have to write a `for` loop over some Iterable again.
 
@@ -284,7 +284,11 @@ function getEfficientProduct(array) {
 We can express the `return` condition in `iternal` by supplying an `escape` predicate as follows:
 
 ```typescript
-const efficientProduct = Collector.createMono({ init: 0, next: (state, value) => state * value, state => state === 0 })
+const efficientProduct = Collector.createMono({
+  init: 0,
+  next: (state, value) => state * value,
+  escape: state => state === 0
+})
 ```
 
 Now, we can run this collector on infinite streams (but only if they somewhere meet the escape condition):
