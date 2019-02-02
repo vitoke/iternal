@@ -30,7 +30,7 @@ console.log(
 
 console.log(
   'The min and max value: ',
-  iter([8, 3, 6, 7], [2, 10, 2]).collect(Collectors.range)
+  iter([8, 3, 6, 7], [4, 10, 6]).collect(Collectors.range)
 )
 
 > result: The min and max value:  [ 3, 10 ]
