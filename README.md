@@ -213,8 +213,8 @@ This collector will take the average word lengths of the input words, where the 
 
 - `mapInput` indicates that strings are taken as input, but the length is taken for the average collector
 - `filterInput` removes all words with length less than 3
-- `appendInput` adds the words 'test' and 'foo' to the input
-- `dropInput` skips the first input words
+- `appendInput` adds the words 'test' and 'foo' to the end of the input
+- `dropInput` skips the first input word
 - `sampleInput` takes every 2nd word of the input
 
 It is interesting to note here that, as the list indicates, most of these operations should be read in backward order, since we are transforming are transforming a given input stream towards our desired input stream.
@@ -252,7 +252,11 @@ function sumIsPrime(someArray) {
 As a Collector:
 
 ```typescript
-const sumIsPrime = Collector.createMono({ init: 0, next: (state, elem) => state + elem, isPrime })
+const sumIsPrime = Collector.createMono({
+  init: 0,
+  next: (state, elem) => state + elem,
+  stateToResult: isPrime
+})
 ```
 
 You can actually also do this after the fact with an existing Collector:
@@ -340,7 +344,7 @@ this constructor function, and then create a new object every time the Collector
 
 ```typescript
 const fixedCreateObject = Collector.create({
-  init: () => ({}),
+  init: () => ({}),  // <-- this line has changed
   next: (state, key) => {
   state[key] = 'init'
   return state
