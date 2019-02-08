@@ -40,7 +40,7 @@ console.log(
   'Average word length:',
   iter(['This', 'is', 'a', 'test'])
     .collect(
-      Collectors.average.mapInput<string>(word => word.length)
+      Collectors.average.mapInput(word => word.length)
     )
 )
 
