@@ -40,7 +40,7 @@ console.log(
   'Average word length:',
   iter(['This', 'is', 'a', 'test'])
     .collect(
-      Collectors.average.mapInput(word => word.length)
+      Collectors.average.mapInput<string>(word => word.length)
     )
 )
 
@@ -183,7 +183,7 @@ since it doesn't handle strings as input. Instead of converting our array of str
 words, we can modify the our Collect to do this input conversion 'on the fly':
 
 ```typescript
-const wordLengthSum = sumCollector.mapInput(word => word.length)
+const wordLengthSum = sumCollector.mapInput<string>(word => word.length)
 
 const totalLength = iter(arrayOfStrings, someOtherArrayOfStrings).collect(wordLengthSum)
 ```
@@ -191,7 +191,7 @@ const totalLength = iter(arrayOfStrings, someOtherArrayOfStrings).collect(wordLe
 And again, we can use `Collector.combine` if we want to get multiple results for the array:
 
 ```typescript
-const wordLengthAverage = Collectors.average.mapInput(word => word.length)
+const wordLengthAverage = Collectors.average.mapInput<string>(word => word.length)
 
 const [totalLength, averageLength] = iter(arrayOfStrings).collect(
   Collector.combine(wordLengthSum, wordLengthAverage)

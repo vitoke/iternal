@@ -397,7 +397,10 @@ describe('AsyncIter', () => {
     expect(values).toEqual([1, 2, 3])
 
     values = []
-    await iter3.monitor('', pushValue).forEach()
+    await iter3
+      .monitor('', pushValue)
+      .monitor('', pushValue)
+      .forEach()
     expect(values).toEqual([1, 1, 2, 2, 3, 3])
   })
 

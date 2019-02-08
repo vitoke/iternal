@@ -241,8 +241,6 @@ export class StateCollector<A, S, R> {
     })
   }
 
-  private monitorEffect?: MonitorEffect<[A, S]>
-
   /**
    * Constructs a new Collector instance
    * @param createInitState a lazy value generating the initial state for the collect operation
@@ -250,16 +248,7 @@ export class StateCollector<A, S, R> {
    * @param stateToResult a function that maps a state S to an output value R
    * @param escape an optional function indicating that the output value will never change no matter what input is offered further
    */
-  private constructor(private readonly definition: StateCollectorDefinition<A, S, R>) {
-    const { nextState } = definition
-
-    this.definition.nextState = (state, elem, index) => {
-      if (this.monitorEffect !== undefined) {
-        this.monitorEffect([elem, state], index)
-      }
-      return nextState(state, elem, index)
-    }
-  }
+  private constructor(private readonly definition: StateCollectorDefinition<A, S, R>) {}
 
   get createInitState() {
     return this.definition.createInitState
@@ -277,22 +266,19 @@ export class StateCollector<A, S, R> {
   /**
    * Performs given `monitorEffect` for each input element. By default does a console.log with the given `tag`.
    * @param tag a tag to use with logging
-   * @param monitorEffect the effect to perform for each input element
+   * @param effect the effect to perform for each input element
    */
   monitorInput(
     tag: string = '',
-    monitorEffect: MonitorEffect<[A, S]> = defaultMonitorEffect
+    effect: MonitorEffect<[A, S]> = defaultMonitorEffect
   ): Collector<A, R> {
-    if (this.monitorEffect === undefined) {
-      this.monitorEffect = (input, index) => monitorEffect(input, index, tag)
-    } else {
-      const currentEffect = this.monitorEffect
-      this.monitorEffect = (input, index) => {
-        currentEffect(input, index)
-        monitorEffect(input, index)
+    return new StateCollector({
+      ...this.definition,
+      nextState: (state, elem, index) => {
+        effect([elem, state], index, tag)
+        return this.definition.nextState(state, elem, index)
       }
-    }
-    return this
+    })
   }
 
   /**

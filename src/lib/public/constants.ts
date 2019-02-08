@@ -35,15 +35,24 @@ export type Lazy<T> = () => T
  * An optionally lazy value of type T, can be directly a value T, or a function of arity 0 that returns a value of type T
  * @typeparam T the value type
  */
-
 export type OptLazy<T> = Lazy<T> | T
 
 export namespace OptLazy {
+  /**
+   * Returns an always lazy value of type `Lazy<T>` from an optionally lazy value of type `OptLazy<T>`
+   * @typeparam T the value type
+   * @param optLazy the optionally lazy input
+   */
   export function toLazy<T>(optLazy: OptLazy<T>): Lazy<T> {
     if (typeof optLazy === 'function') return optLazy as Lazy<T>
     return () => optLazy
   }
 
+  /**
+   * Returns the value of an optionally lazy value of type `OptLazy<T>`
+   * @typeparam T the value type
+   * @param optLazy the optionally lazy input
+   */
   export function toValue<T>(optLazy: OptLazy<T>): T {
     return toLazy(optLazy)()
   }
@@ -78,9 +87,19 @@ export type MapFun<A, B> = IterFun<A, B>
  */
 export type ReduceFun<E, S> = (state: S, elem: E, index: number) => S
 
+/**
+ * An Iterable or AsyncIterable of element type E
+ */
 export type AnyIterable<E> = Iterable<E> | AsyncIterable<E>
+
+/**
+ * An Iterator or AsyncIterator of element type E
+ */
 export type AnyIterator<E> = Iterator<E> | AsyncIterator<E>
 
+/**
+ * Any type that is both iterable and indexable by number, and has a defined length
+ */
 export type Indexed<E> = Iterable<E> & { [key: number]: E; length: number }
 
 /**
@@ -89,6 +108,11 @@ export type Indexed<E> = Iterable<E> & { [key: number]: E; length: number }
  */
 export type MonitorEffect<E> = (value: E, index: number, tag?: string) => void
 
+/**
+ * A Map with keys K and each key having multiple values of type V.
+ * @typeparam K the key type
+ * @typeparam V the value type
+ */
 export type Dict<K, V> = Map<K, V[]>
 
 export namespace Dict {

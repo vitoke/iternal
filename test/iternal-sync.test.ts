@@ -367,7 +367,10 @@ describe('Iter', () => {
     expect(values).toEqual([1, 2, 3])
 
     values = []
-    iter3.monitor('', pushValue).forEach()
+    iter3
+      .monitor('', pushValue)
+      .monitor('', pushValue)
+      .forEach()
     expect(values).toEqual([1, 1, 2, 2, 3, 3])
   })
 

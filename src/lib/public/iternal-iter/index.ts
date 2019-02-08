@@ -80,25 +80,11 @@ export class Iter<T> implements Iterable<T> {
     return iter.fromIterator(() => createIterator(this))
   }
 
-  private monitorEffect?: MonitorEffect<T>;
-
   /**
    * Iterable interface: When called, returns an Iterator of type T
    */
   [Symbol.iterator](): Iterator<T> {
-    const iterator = getIterator(this.iterable)
-    const effect = this.monitorEffect
-
-    if (effect === undefined) return iterator
-    let index = 0
-
-    return {
-      next: (...args: any[]) => {
-        const nextResult = iterator.next(...args)
-        if (!nextResult.done) effect(nextResult.value, index++)
-        return nextResult
-      }
-    }
+    return getIterator(this.iterable)
   }
 
   /**
@@ -827,10 +813,9 @@ export class Iter<T> implements Iterable<T> {
   }
 
   /**
-   * Allows side-effects at any point in the chain, but does not modify the Iter, it just returns the same Iter instance.
+   * Allows side-effects at any point in the chain, but does not modify the Iter.
    * @param tag a tag that can be used when performing the side-effect
    * @param effect the side-effect to perform for each yielded element
-   * @returns this exact instance
    * @example
    * ```typescript
    * iter.nats.monitor("nats").take(3)
@@ -843,18 +828,13 @@ export class Iter<T> implements Iterable<T> {
   monitor(tag: string = '', effect: MonitorEffect<T> = defaultMonitorEffect): Iter<T> {
     if (this.isEmptyInstance) return this
 
-    const currentEffect = this.monitorEffect
-
-    if (currentEffect === undefined) {
-      this.monitorEffect = (v, i) => effect(v, i, tag)
-    } else {
-      this.monitorEffect = (v, i) => {
-        currentEffect(v, i, tag)
-        effect(v, i, tag)
+    return this.applyCustomOperation(function*(iterable) {
+      let index = 0
+      for (const elem of iterable) {
+        effect(elem, index++, tag)
+        yield elem
       }
-    }
-
-    return this
+    })
   }
 
   /**
@@ -1238,6 +1218,7 @@ export namespace iter {
       }
     })
   }
+
   /**
    * Returns an Iter yielding a potentially infinite sequence of elements using an unfolding function
    * @typeparam S the internal 'state' of the unfolding function
@@ -1488,25 +1469,11 @@ export class AsyncIter<T> implements AsyncIterable<T> {
     return asyncIter.fromIterator(() => createIterator(this))
   }
 
-  private monitorEffect?: MonitorEffect<T>;
-
   /**
    * AsyncIterable interface: When called, returns an AsyncIterator of type T
    */
   [Symbol.asyncIterator](): AsyncIterator<T> {
-    const iterator = getAsyncIterator(this.iterable)
-    const effect = this.monitorEffect
-
-    if (effect === undefined) return iterator
-    let index = 0
-
-    return {
-      next: async (...args: any[]) => {
-        const nextResult = await iterator.next(...args)
-        if (!nextResult.done) effect(nextResult.value, index++)
-        return nextResult
-      }
-    }
+    return getAsyncIterator(this.iterable)
   }
 
   /**
@@ -2237,10 +2204,9 @@ export class AsyncIter<T> implements AsyncIterable<T> {
   }
 
   /**
-   * Allows side-effects at any point in the chain, but does not modify the Iter, it just returns the same AsyncIter instance.
+   * Allows side-effects at any point in the chain, but does not modify the Iter.
    * @param tag a tag that can be used when performing the side-effect
    * @param effect the side-effect to perform for each yielded element
-   * @returns this exact instance
    * ```typescript
    * iter.nats.toAsync().monitor("nats").take(3)
    * result:
@@ -2252,18 +2218,13 @@ export class AsyncIter<T> implements AsyncIterable<T> {
   monitor(tag: string = '', effect: MonitorEffect<T> = defaultMonitorEffect): AsyncIter<T> {
     if (this.isEmptyInstance) return this
 
-    const currentEffect = this.monitorEffect
-
-    if (currentEffect === undefined) {
-      this.monitorEffect = (v, i) => effect(v, i, tag)
-    } else {
-      this.monitorEffect = (v, i) => {
-        currentEffect(v, i, tag)
-        effect(v, i, tag)
+    return this.applyCustomOperation(async function*(iterable) {
+      let index = 0
+      for await (const elem of iterable) {
+        effect(elem, index++, tag)
+        yield elem
       }
-    }
-
-    return this
+    })
   }
 
   /**
@@ -2297,6 +2258,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
       if (newBucket || bucket.length > 0) yield bucket
     })
   }
+
   /**
    * Returns an AsyncIter that yields arrays of values of this AsyncIter each time a value that equals given elem is encountered
    * @param elem the element on which a new split should be made
@@ -2567,6 +2529,7 @@ export namespace asyncIter {
       }
     })
   }
+
   /**
    * Returns an AsyncIter yielding a potentially infinite sequence of elements using an unfolding function
    * @typeparam S the internal 'state' of the unfolding function
