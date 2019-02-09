@@ -87,65 +87,34 @@ export namespace Collector {
     return create({ init: result, next: () => result, escape: alwaysTrue })
   }
 
+  export type MapCollector<A, CS extends [any, any, ...any[]]> = Collector<A, any>[] &
+    { [K in keyof CS]: Collector<A, CS[K]> }
+
   /**
    * Returns a Collector where the provided GenCollectors are run in parallel.
    * The given `combineFun` is applied to the array of results.
    * Note: due to type system limitations only the type of the first other collector is kept
    * @typeparam A the input element type
-   * @typeparam R the output type of the provided `col1`
-   * @typeparam R2 the output type of the provided `col2`
+   * @typeparam CR a tuple corresponding to the output types of the input collectors
    * @typeparam GR the result type of the `combineFun` function
    * @param combineFun a function that takes the tupled output of all provided collectors, and combines them into one result value
-   * @param col1 a Collector taking the same type of elements
-   * @param col2 a Collector taking the same type of elements
-   * @param otherCollectors a number of Collectors taking the same type of elements
+   * @param collectors a number of Collectors taking the same type of elements as input
    */
-  export function combineWith<A, R, R2, GR>(
-    combineFun: (...results: [R, R2, ...any[]]) => GR,
-    col1: Collector<A, R>,
-    col2: Collector<A, R2>,
-    ...otherCollectors: Collector<A, any>[]
+  export function combineWith<A, CR extends [unknown, unknown, ...unknown[]], GR>(
+    combineFun: (...results: CR) => GR,
+    ...collectors: MapCollector<A, CR>
   ): Collector<A, GR> {
-    return createState<A, any[], GR>({
-      init: () => [
-        col1.createInitState(),
-        col2.createInitState(),
-        ...otherCollectors.map(col => col.createInitState())
-      ],
-      next: ([state1, state2, ...otherStates], elem, index) => {
-        const newStates = [col1.nextState(state1, elem, index), col2.nextState(state2, elem, index)]
-
-        let i = 0
-        for (const state of otherStates) {
-          newStates.push(otherCollectors[i].nextState(state, elem, index))
-          i++
-        }
-        return newStates
+    return createState<A, CR, GR>({
+      init: () => collectors.map(col => col.createInitState()) as CR,
+      next: (states, elem, index) => {
+        return states.map((state, i) => collectors[i].nextState(state, elem, index)) as CR
       },
-      stateToResult: ([state1, state2, ...otherStates], index) => {
-        const results = []
-
-        let i = 0
-        for (const state of otherStates) {
-          results.push(otherCollectors[i].stateToResult(state, index))
-          i++
-        }
-        return combineFun(
-          col1.stateToResult(state1, index),
-          col2.stateToResult(state2, index),
-          ...results
-        )
+      stateToResult: (states, size) => {
+        const results = states.map((state, i) => collectors[i].stateToResult(state, size))
+        return combineFun(...(results as CR))
       },
-      escape: ([state1, state2, ...otherStates], index) => {
-        const esc = optPred(state1, index, col1.escape) && optPred(state2, index, col2.escape)
-
-        if (esc) return true
-        let i = 0
-        for (const state of otherStates) {
-          if (optPred(state, index, otherCollectors[i].escape)) return true
-          i++
-        }
-        return false
+      escape: (states, index) => {
+        return states.every((state, i) => optPred(state, index, collectors[i].escape))
       }
     })
   }
@@ -153,20 +122,14 @@ export namespace Collector {
   /**
    * Returns a Collector running the provided Collectors are run in parallel.
    * The results are collected into an array.
-   * Note: due to type system limitations only the type of the first other collector is kept
    * @typeparam A the input element type
-   * @typeparam R the output type of the provided `col1`
-   * @typeparam R2 the output type of the provided `col2`
-   * @param col1 a Collector taking the same type of elements
-   * @param col2 a Collector taking the same type of elements
-   * @param otherCollectors a number of Collectors taking the same type of elements
+   * @typeparam CR a tuple corresponding to the output types of the input collectors
+   * @param collectors a number of Collectors taking the same type of elements as input
    */
-  export function combine<A, R, R2, GR extends [R, R2, ...unknown[]]>(
-    col1: Collector<A, R>,
-    col2: Collector<A, R2>,
-    ...otherCollectors: Collector<A, unknown>[]
-  ): Collector<A, GR> {
-    return combineWith<A, R, R2, GR>((...results) => results as GR, col1, col2, ...otherCollectors)
+  export function combine<A, CR extends [unknown, unknown, ...unknown[]]>(
+    ...collectors: MapCollector<A, CR>
+  ): Collector<A, CR> {
+    return combineWith<A, CR, CR>((...results) => results, ...(collectors as any))
   }
 
   /**
@@ -639,5 +602,14 @@ export class StateCollector<A, S, R> {
       insert === undefined ? undefined : () => insert,
       amount
     )
+  }
+
+  /**
+   * Returns a Collector where between each two elements, the given `elem` is added as extra input.
+   * @param elem the element to insert between input elements
+   */
+  intersperseInput(elem: A): Collector<A, R> {
+    const insert = [elem]
+    return this.patchWhereInput((_, i) => i > 0, 0, () => insert)
   }
 }
