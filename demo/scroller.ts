@@ -4,7 +4,7 @@
  * all options are optional
  */
 
-import iter from '../src/lib/public/iternal'
+import iter from '..'
 
 // Process command line arguments
 
