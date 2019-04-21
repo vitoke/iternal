@@ -16,7 +16,7 @@ https://vitoke.github.io/iternal/globals.html
 ### Simple
 
 ```typescript
-import { iter, Collectors } from 'iternal'
+import iter from 'iternal'
 
 console.log(
   iter.of(1, 3, 5)
@@ -30,7 +30,7 @@ console.log(
 
 console.log(
   'The min and max value: ',
-  iter([8, 3, 6, 7], [4, 10, 6]).collect(Collectors.range)
+  iter([8, 3, 6, 7], [4, 10, 6]).collect(iter.ops.range)
 )
 
 > result: The min and max value:  [ 3, 10 ]
@@ -40,7 +40,7 @@ console.log(
   'Average word length:',
   iter(['This', 'is', 'a', 'test'])
     .collect(
-      Collectors.average.mapInput(word => word.length)
+      iter.ops.average.mapInput(word => word.length)
     )
 )
 
@@ -50,16 +50,16 @@ console.log(
 ### Advanced
 
 ```typescript
-import { iter, Collector, Collectors } from 'iternal'
+import iter from 'iternal'
 
 // rangeBy returns the values for which the function gives the minimum and maximum value
-const shortestAndLongestStringCollector = Collectors.rangeBy<string>(w => w.length)
+const shortestAndLongestStringCollector = iter.ops.rangeBy<string>(w => w.length)
 
 // mapInput converts some input type into a type the collector understands
-const averageStringLengthCollector = Collectors.average.mapInput<string>(w => w.length)
+const averageStringLengthCollector = iter.ops.average.mapInput<string>(w => w.length)
 
 // We construct a string from the combination of the above two collectors
-const verySpecificCollector = Collector.combineWith(
+const verySpecificCollector = iter.collector.combineWith(
   ([shortest, longest], avgLen) =>
     `Shortest word: ${shortest}, longest word: ${longest}, average length: ${avgLen}`,
   shortestAndLongestStringCollector,
@@ -165,17 +165,16 @@ loops over the array once and calculates both results at once.
 Now, using Collectors:
 
 ```typescript
-// already defined as Collectors.sum
-const sumCollector = Collector.createMono({ init: 0, next: (state, value) => state + value })
+// already defined as iter.ops.sum
+const sumCollector = iter.collector.create({ init: 0, next: (state, value) => state + value })
 
-// already defined as Collectors.product
-const productCollector = Collector.createMono({ init: 1, next: (state, value) => state * value })
+// already defined as iter.ops.product
+const productCollector = iter.collector.create({ init: 1, next: (state, value) => state * value })
 
-const [sum, product] = iter(someArray).collect(Collector.combine(sumCollector, productCollector))
+const [sum, product] = iter(someArray).collect(
+  iter.collector.combine(sumCollector, productCollector)
+)
 ```
-
-Here, `createMono` just means a Collector of which the state type is the same as its input and output type (called
-Monoid in functional programming).
 
 Now that we have written these Collectors, we can also reuse the logic in many different ways. Imagine that we want
 to calculate the sum of all lengths of words in an array. We cannot directly use the `sumCollector` defined above,
@@ -191,17 +190,17 @@ const totalLength = iter(arrayOfStrings, someOtherArrayOfStrings).collect(wordLe
 And again, we can use `Collector.combine` if we want to get multiple results for the array:
 
 ```typescript
-const wordLengthAverage = Collectors.average.mapInput<string>(word => word.length)
+const wordLengthAverage = iter.ops.average.mapInput<string>(word => word.length)
 
 const [totalLength, averageLength] = iter(arrayOfStrings).collect(
-  Collector.combine(wordLengthSum, wordLengthAverage)
+  iter.collector.combine(wordLengthSum, wordLengthAverage)
 )
 ```
 
 `iternal` even defines many input modifiers for Collectors that help modifying the input, for exampe:
 
 ```typescript
-const aCollector = Collectors.average
+const aCollector = iter.ops.average
   .mapInput<string>(word => word.length)
   .sampleInput(2)
   .dropInput(1)
@@ -252,7 +251,7 @@ function sumIsPrime(someArray) {
 As a Collector:
 
 ```typescript
-const sumIsPrime: Collector<number, boolean> = Collector.createState({
+const sumIsPrime: Collector<number, boolean> = iter.collector.createState({
   init: 0,
   next: (state, elem) => state + elem,
   stateToResult: isPrime
@@ -284,7 +283,7 @@ function getEfficientProduct(array) {
 We can express the `return` condition in `iternal` by supplying an `escape` predicate as follows:
 
 ```typescript
-const efficientProduct = Collector.createMono({
+const efficientProduct = iter.collector.create({
   init: 0,
   next: (state, value) => state * value,
   escape: state => state === 0
@@ -321,7 +320,7 @@ Everytime you call this `createObject` function, you will receive a new object, 
 However, let's see what happens using a naive Collector:
 
 ```typescript
-const createObject = Collector.create({
+const createObject = iter.collector.create({
   init: {},
   next: (state, key) => {
     state[key] = 'init'
@@ -347,7 +346,7 @@ To fix such cases, you can optionally provide a constructor function as the init
 this constructor function, and then create a new object every time the Collector is used:
 
 ```typescript
-const fixedCreateObject = Collector.create({
+const fixedCreateObject = iter.collector.create({
   init: () => ({}),  // <-- this line has changed
   next: (state, key) => {
     state[key] = 'init'
