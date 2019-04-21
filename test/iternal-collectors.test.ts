@@ -1,21 +1,21 @@
-import { Collector, Collectors, iter } from '../src/lib/public/iternal'
+import iter, { Op, ops } from '../src/lib/public/iternal'
 import { isEven } from './test-utils'
 
 const ExpectThrow = Symbol()
 type ExpectThrow = typeof ExpectThrow
 
-const compare = <I, O>(collector: Collector<I, O>, ...is: [Iterable<I>, O | ExpectThrow][]) =>
+const compare = <I, O>(op: Op<I, O>, ...is: [Iterable<I>, O | ExpectThrow][]) =>
   is.forEach(([i, o]) => {
     if (o === ExpectThrow) {
-      return expect(() => iter(i).collect(collector)).toThrow()
+      return expect(() => iter(i).collect(op)).toThrow()
     }
-    expect(iter(i).collect(collector)).toEqual(o)
+    expect(iter(i).collect(op)).toEqual(o)
   })
 
 describe('Collect', () => {
   test('and', () => {
     compare(
-      Collectors.and,
+      ops.and,
       [[], true],
       [[true], true],
       [[false], false],
@@ -28,7 +28,7 @@ describe('Collect', () => {
 
   test('or', () => {
     compare(
-      Collectors.or,
+      ops.or,
       [[], false],
       [[true], true],
       [[false], false],
@@ -41,7 +41,7 @@ describe('Collect', () => {
 
   test('sum', () => {
     compare(
-      Collectors.sum,
+      ops.sum,
       [[], 0],
       [[0], 0],
       [[10], 10],
@@ -53,7 +53,7 @@ describe('Collect', () => {
 
   test('product', () => {
     compare(
-      Collectors.product,
+      ops.product,
       [[], 1],
       [[0], 0],
       [[10], 10],
@@ -66,7 +66,7 @@ describe('Collect', () => {
 
   test('average', () => {
     compare(
-      Collectors.average,
+      ops.average,
       [[], 0],
       [[0], 0],
       [[10], 10],
@@ -78,7 +78,7 @@ describe('Collect', () => {
 
   test('contains', () => {
     compare(
-      Collectors.contains('#'),
+      ops.contains('#'),
       ['', false],
       ['a', false],
       ['#', true],
@@ -88,24 +88,24 @@ describe('Collect', () => {
   })
 
   test('count', () => {
-    compare<any, number>(Collectors.count, ['', 0], ['a', 1], [iter.range(0, 50), 50])
+    compare<any, number>(ops.count, ['', 0], ['a', 1], [iter.range(0, 50), 50])
   })
 
   test('elemAt', () => {
     compare<any, any>(
-      Collectors.elemAt(1),
+      ops.elemAt(1),
       ['', ExpectThrow],
       ['a', ExpectThrow],
       ['ab', 'b'],
       ['abc', 'b']
     )
-    compare(Collectors.elemAt(1, 'X'), ['', 'X'], ['a', 'X'], ['ab', 'b'], ['abc', 'b'])
-    compare(Collectors.elemAt(1, () => 'X'), ['', 'X'], ['a', 'X'], ['ab', 'b'], ['abc', 'b'])
+    compare(ops.elemAt(1, 'X'), ['', 'X'], ['a', 'X'], ['ab', 'b'], ['abc', 'b'])
+    compare(ops.elemAt(1, () => 'X'), ['', 'X'], ['a', 'X'], ['ab', 'b'], ['abc', 'b'])
   })
 
   test('every', () => {
     compare(
-      Collectors.every(isEven),
+      ops.every(isEven),
       [[], true],
       [[0], true],
       [[1], false],
@@ -117,7 +117,7 @@ describe('Collect', () => {
 
   test('some', () => {
     compare(
-      Collectors.some(isEven),
+      ops.some(isEven),
       [[], false],
       [[0], true],
       [[1], false],
@@ -129,50 +129,38 @@ describe('Collect', () => {
   })
 
   test('first', () => {
-    compare(Collectors.first(), ['', ExpectThrow], ['a', 'a'], ['abc', 'a'])
-    compare(Collectors.first('X'), ['', 'X'], ['a', 'a'], ['abc', 'a'])
-    compare(Collectors.first(() => 'X'), ['', 'X'], ['a', 'a'], ['abc', 'a'])
+    compare(ops.first(), ['', ExpectThrow], ['a', 'a'], ['abc', 'a'])
+    compare(ops.first('X'), ['', 'X'], ['a', 'a'], ['abc', 'a'])
+    compare(ops.first(() => 'X'), ['', 'X'], ['a', 'a'], ['abc', 'a'])
   })
 
   test('last', () => {
-    compare(Collectors.last(), ['', ExpectThrow], ['a', 'a'], ['abc', 'c'])
-    compare(Collectors.last('X'), ['', 'X'], ['a', 'a'], ['abc', 'c'])
-    compare(Collectors.last(() => 'X'), ['', 'X'], ['a', 'a'], ['abc', 'c'])
+    compare(ops.last(), ['', ExpectThrow], ['a', 'a'], ['abc', 'c'])
+    compare(ops.last('X'), ['', 'X'], ['a', 'a'], ['abc', 'c'])
+    compare(ops.last(() => 'X'), ['', 'X'], ['a', 'a'], ['abc', 'c'])
   })
 
   test('find', () => {
-    compare(
-      Collectors.find(isEven),
-      [[], ExpectThrow],
-      [[1], ExpectThrow],
-      [[0], 0],
-      [[1, 3, 4], 4]
-    )
-    compare(Collectors.find(isEven, -10), [[], -10], [[1], -10], [[0], 0], [[1, 3, 4], 4])
-    compare(Collectors.find(isEven, () => -10), [[], -10], [[1], -10], [[0], 0], [[1, 3, 4], 4])
+    compare(ops.find(isEven), [[], ExpectThrow], [[1], ExpectThrow], [[0], 0], [[1, 3, 4], 4])
+    compare(ops.find(isEven, -10), [[], -10], [[1], -10], [[0], 0], [[1, 3, 4], 4])
+    compare(ops.find(isEven, () => -10), [[], -10], [[1], -10], [[0], 0], [[1, 3, 4], 4])
   })
 
   test('findLast', () => {
     compare(
-      Collectors.findLast(isEven),
+      ops.findLast(isEven),
       [[], ExpectThrow],
       [[1], ExpectThrow],
       [[0], 0],
       [[0, 2, 3, 4], 4]
     )
-    compare(Collectors.findLast(isEven, -10), [[], -10], [[1], -10], [[0], 0], [[0, 2, 3, 4], 4])
-    compare(
-      Collectors.findLast(isEven, () => -10),
-      [[], -10],
-      [[1], -10],
-      [[0], 0],
-      [[0, 2, 3, 4], 4]
-    )
+    compare(ops.findLast(isEven, -10), [[], -10], [[1], -10], [[0], 0], [[0, 2, 3, 4], 4])
+    compare(ops.findLast(isEven, () => -10), [[], -10], [[1], -10], [[0], 0], [[0, 2, 3, 4], 4])
   })
 
   test('histogram', () => {
     compare(
-      Collectors.histogram(),
+      ops.histogram(),
       ['', new Map()],
       ['a', new Map([['a', 1]])],
       ['ab', new Map([['a', 1], ['b', 1]])],
@@ -192,7 +180,7 @@ describe('Collect', () => {
 
   test('groupBy', () => {
     compare(
-      Collectors.groupBy((v: number) => v % 3),
+      ops.groupBy((v: number) => v % 3),
       [[], new Map()],
       [[1], new Map([[1, [1]]])],
       [[1, 5], new Map([[1, [1]], [2, [5]]])],
@@ -203,7 +191,7 @@ describe('Collect', () => {
 
   test('groupByUnique', () => {
     compare(
-      Collectors.groupByUnique((v: number) => v % 3),
+      ops.groupByUnique((v: number) => v % 3),
       [[], new Map()],
       [[1], new Map([[1, new Set([1])]])],
       [[1, 5], new Map([[1, new Set([1])], [2, new Set([5])]])],
@@ -213,24 +201,24 @@ describe('Collect', () => {
   })
 
   test('hasValue', () => {
-    compare(Collectors.hasValue, [[], false], [[1], true], [[1, 2, 3], true])
+    compare(ops.hasValue, [[], false], [[1], true], [[1, 2, 3], true])
   })
 
   test('noValue', () => {
-    compare(Collectors.noValue, [[], true], [[1], false], [[1, 2, 3], false])
+    compare(ops.noValue, [[], true], [[1], false], [[1, 2, 3], false])
   })
 
   test('stringAppend', () => {
-    compare(Collectors.stringAppend, ['', ''], ['a', 'a'], ['abc', 'abc'])
+    compare(ops.stringAppend, ['', ''], ['a', 'a'], ['abc', 'abc'])
   })
 
   test('stringPrepend', () => {
-    compare(Collectors.stringPrepend, ['', ''], ['a', 'a'], ['abc', 'cba'])
+    compare(ops.stringPrepend, ['', ''], ['a', 'a'], ['abc', 'cba'])
   })
 
   test('choose', () => {
     compare(
-      Collectors.choose((chosen, next) => isEven(chosen + next)),
+      ops.choose<number>((chosen, next) => isEven(chosen + next)),
       [[], ExpectThrow],
       [[0], 0],
       [[0, 1], 0],
@@ -241,30 +229,16 @@ describe('Collect', () => {
   })
 
   test('min', () => {
-    compare(
-      Collectors.min(),
-      [[], ExpectThrow],
-      [[0], 0],
-      [[5, 3], 3],
-      [[5, 4, 3], 3],
-      [[5, 3, 4], 3]
-    )
+    compare(ops.min(), [[], ExpectThrow], [[0], 0], [[5, 3], 3], [[5, 4, 3], 3], [[5, 3, 4], 3])
   })
 
   test('max', () => {
-    compare(
-      Collectors.max(),
-      [[], ExpectThrow],
-      [[0], 0],
-      [[5, 3], 5],
-      [[5, 4, 3], 5],
-      [[3, 5, 4], 5]
-    )
+    compare(ops.max(), [[], ExpectThrow], [[0], 0], [[5, 3], 5], [[5, 4, 3], 5], [[3, 5, 4], 5])
   })
 
   test('minBy', () => {
     compare(
-      Collectors.minBy((v: string) => v.length),
+      ops.minBy((v: string) => v.length),
       [[], ExpectThrow],
       [[''], ''],
       [['ta', 't'], 't'],
@@ -275,7 +249,7 @@ describe('Collect', () => {
 
   test('maxBy', () => {
     compare(
-      Collectors.maxBy((v: string) => v.length),
+      ops.maxBy((v: string) => v.length),
       [[], ExpectThrow],
       [[''], ''],
       [['ta', 't'], 'ta'],
@@ -285,18 +259,12 @@ describe('Collect', () => {
   })
 
   test('range', () => {
-    compare(
-      Collectors.range,
-      [[], ExpectThrow],
-      [[0], [0, 0]],
-      [[1, 0], [0, 1]],
-      [[4, 1, 3], [1, 4]]
-    )
+    compare(ops.range, [[], ExpectThrow], [[0], [0, 0]], [[1, 0], [0, 1]], [[4, 1, 3], [1, 4]])
   })
 
   test('toObject', () => {
     compare(
-      Collectors.toObject(),
+      ops.toObject(),
       [[], {}],
       [[['a', 1]], { a: 1 }],
       [[['b', 2]], { b: 2 }],
@@ -306,7 +274,7 @@ describe('Collect', () => {
 
   test('toSet', () => {
     compare(
-      Collectors.toSet(),
+      ops.toSet(),
       [[], new Set()],
       [[1], new Set([1])],
       [[1, 2], new Set([1, 2])],
@@ -316,7 +284,7 @@ describe('Collect', () => {
 
   test('toMap', () => {
     compare(
-      Collectors.toMap(),
+      ops.toMap(),
       [[], new Map()],
       [[[1, 1]], new Map([[1, 1]])],
       [[[1, 1], [2, 2]], new Map([[1, 1], [2, 2]])]
@@ -324,12 +292,12 @@ describe('Collect', () => {
   })
 
   test('toArray', () => {
-    compare(Collectors.toArray(), [[], []], [[1], [1]], [[1, 2], [1, 2]])
+    compare(ops.toArray(), [[], []], [[1], [1]], [[1, 2], [1, 2]])
   })
 
   test('partition', () => {
     compare(
-      Collectors.partition(isEven),
+      ops.partition(isEven),
       [[], [[], []]],
       [[1], [[], [1]]],
       [[2], [[2], []]],
@@ -339,7 +307,7 @@ describe('Collect', () => {
 
   test('combine', () => {
     compare(
-      Collector.combine(Collectors.sum, Collectors.product),
+      Op.combine(ops.sum, ops.product),
       [[], [0, 1]],
       [[1], [1, 1]],
       [[2, 3], [5, 6]],
@@ -350,8 +318,8 @@ describe('Collect', () => {
 
 describe('CollectIter', () => {
   test('sum', () => {
-    expect([...iter(new Array<number>()).collectIter(Collectors.sum)]).toEqual([])
-    expect([...iter([1]).collectIter(Collectors.sum)]).toEqual([1])
-    expect([...iter([1, 3, 6]).collectIter(Collectors.sum)]).toEqual([1, 4, 10])
+    expect([...iter(new Array<number>()).collectIter(ops.sum)]).toEqual([])
+    expect([...iter([1]).collectIter(ops.sum)]).toEqual([1])
+    expect([...iter([1, 3, 6]).collectIter(ops.sum)]).toEqual([1, 4, 10])
   })
 })

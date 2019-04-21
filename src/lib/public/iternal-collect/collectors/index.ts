@@ -4,9 +4,9 @@
 
 import { NoValue } from '../../../private/iternal-common'
 import { Dict, Histogram, OptLazy, Pred, UniqueDict } from '../../constants'
-import { Collector, MonoCollector, StateCollector } from '../collector'
+import { Op } from '../collector'
 
-export namespace Collectors {
+export namespace ops {
   function throwCollectError(): never {
     throw Error('collect error')
   }
@@ -19,7 +19,7 @@ export namespace Collectors {
    * result: '123'
    * ```
    */
-  export const stringAppend: Collector<any, string> = Collector.create({
+  export const stringAppend: Op<any, string> = Op.create({
     init: '',
     next: (state, elem) => state.concat(String(elem))
   })
@@ -32,7 +32,7 @@ export namespace Collectors {
    * result: '321'
    * ```
    */
-  export const stringPrepend: Collector<any, string> = Collector.create({
+  export const stringPrepend: Op<any, string> = Op.create({
     init: '',
     next: (state, elem) => String(elem).concat(state)
   })
@@ -45,7 +45,7 @@ export namespace Collectors {
    * result: 3
    * ```
    */
-  export const count: Collector<any, number> = Collector.create({
+  export const count: Op<any, number> = Op.create({
     init: 0,
     next: (_, __, index) => index + 1
   })
@@ -61,8 +61,8 @@ export namespace Collectors {
    * result: { foo: 1, bar: true}
    * ```
    */
-  export function toObject<V>(target?: {}): Collector<[string, V], { [key: string]: V }> {
-    return Collector.create<[string, V], { [key: string]: V }>({
+  export function toObject<V>(target?: {}): Op<[string, V], { [key: string]: V }> {
+    return Op.create<[string, V], { [key: string]: V }>({
       init: () => target || {},
       next: (obj, [name, value]) => {
         obj[name] = value
@@ -74,23 +74,23 @@ export namespace Collectors {
   /**
    * Returns a collector that outputs the first element it encounters that satisfies `pred`.
    * If no value is found, it tries to get an alternative value from `otherwise`
-   * @typeparam E the input element type
-   * @param pred a predicate over elements E
+   * @typeparam Elem the input element type
+   * @param pred a predicate over elements Elem
    * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
    *    - not specified / undefined: If the Iterable is empty, this function will throw an error
-   *    - (value: E): If the Iterable is empty, it will return the given value instead
-   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   *    - (value: Elem): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => Elem): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * iter.nats.collect(Collectors.find(v => v > 10))
    * result: 11
    * ```
    */
-  export function find<E>(
-    pred: Pred<E>,
-    otherwise: OptLazy<E> = throwCollectError
-  ): Collector<E, E> {
-    return Collector.createState<E, E | NoValue, E>({
+  export function find<Elem>(
+    pred: Pred<Elem>,
+    otherwise: OptLazy<Elem> = throwCollectError
+  ): Op<Elem, Elem> {
+    return Op.createState<Elem, Elem | NoValue, Elem>({
       init: NoValue,
       next: (found, value, index) => {
         if (found !== NoValue) return found
@@ -105,109 +105,96 @@ export namespace Collectors {
   /**
    * Returns a collector that outputs the last element it encounters that satisfies `pred`.
    * If no value is found, it tries to get an alternative value from `otherwise`
-   * @typeparam E the input element type
-   * @param pred a predicate over elements E
+   * @typeparam Elem the input element type
+   * @param pred a predicate over elements Elem
    * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
    *    - not specified / undefined: If the Iterable is empty, this function will throw an error
-   *    - (value: E): If the Iterable is empty, it will return the given value instead
-   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   *    - (value: Elem): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => Elem): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * iter([1, 4, 2, 9, 3, 8]).collect(Collectors.findLast(v => v < 8))
    * result: 3
    * ```
    */
-  export function findLast<E>(
-    pred: Pred<E>,
-    otherwise: OptLazy<E> = throwCollectError
-  ): Collector<E, E> {
-    return Collector.createState<E, E | NoValue, E>({
-      init: NoValue,
-      next: (found, value, index) => (pred(value, index) ? value : found),
-      stateToResult: state => (state === NoValue ? OptLazy.toValue(otherwise) : state)
+  export function findLast<Elem>(
+    pred: Pred<Elem>,
+    otherwise: OptLazy<Elem> = throwCollectError
+  ): Op<Elem, Elem> {
+    return chooseOpt<Elem>((_, next, index) => pred(next, index)).mapResult(result => {
+      if (result === NoValue) return OptLazy.toValue(otherwise)
+      return result
     })
   }
 
   /**
    * Returns a collector that returns the first element it receives.
    * If no value is received, it tries to get an alternative value from `otherwise`
-   * @typeparam E the input element type
+   * @typeparam Elem the input element type
    * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
    *    - not specified / undefined: If the Iterable is empty, this function will throw an error
-   *    - (value: E): If the Iterable is empty, it will return the given value instead
-   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   *    - (value: Elem): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => Elem): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * iter('abc').collect(Collectors.first())
    * result: 'a'
    * ```
    */
-  export function first<E>(otherwise: OptLazy<E> = throwCollectError): Collector<E, E> {
+  export function first<Elem>(otherwise: OptLazy<Elem> = throwCollectError): Op<Elem, Elem> {
     return find(() => true, otherwise)
   }
-
-  // export function take<E>(amount: number): Collector<E, E> {
-  //   return find((_, index) => index <= amount)
-  // }
-
-  // export function drop<E>(amount: number): Collector<E, E> {
-  //   return find((_, index) => index >= amount)
-  // }
-
-  // export function takeWhile<E>(pred: Pred<E>): Collector<E, E> {
-  //   return findLast((_, index) => index >= amount)
-  // }
 
   /**
    * Returns a collector that returns the last element it receives.
    * If no value is received, it tries to get an alternative value from `otherwise`
-   * @typeparam E the input element type
+   * @typeparam Elem the input element type
    * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
    *    - not specified / undefined: If the Iterable is empty, this function will throw an error
-   *    - (value: E): If the Iterable is empty, it will return the given value instead
-   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   *    - (value: Elem): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => Elem): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * iter('abc').collect(Collectors.last())
    * result: 'c'
    * ```
    */
-  export function last<E>(otherwise: OptLazy<E> = throwCollectError): Collector<E, E> {
+  export function last<Elem>(otherwise: OptLazy<Elem> = throwCollectError): Op<Elem, Elem> {
     return findLast(() => true, otherwise)
   }
 
   /**
    * Returns a collector that returns the element received at position `index`.
    * If no such value is received, it tries to get an alternative value from `otherwise`
-   * @typeparam E the input element type
+   * @typeparam Elem the input element type
    * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
    *    - not specified / undefined: If the Iterable is empty, this function will throw an error
-   *    - (value: E): If the Iterable is empty, it will return the given value instead
-   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   *    - (value: Elem): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => Elem): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * iter('abcdef').collect(Collectors.elemAt(3))
    * result: 'd'
    * ```
    */
-  export function elemAt<E>(
+  export function elemAt<Elem>(
     index: number,
-    otherwise: OptLazy<E> = throwCollectError
-  ): Collector<E, E> {
+    otherwise: OptLazy<Elem> = throwCollectError
+  ): Op<Elem, Elem> {
     return find((_, i) => i === index, otherwise)
   }
 
   /**
    * Returns a collector that returns true if any received element satisfies given `pred` predicate.
-   * @typeparam E the input element type
+   * @typeparam Elem the input element type
    * @example
    * ```typescript
    * iter([1, 3, 5, 7]).collect(Collectors.some(isEven))
    * result: false
    * ```
    */
-  export function some<E>(pred: Pred<E>): Collector<E, boolean> {
-    return Collector.create({
+  export function some<Elem>(pred: Pred<Elem>): Op<Elem, boolean> {
+    return Op.create<Elem, boolean>({
       init: false,
       next: (state, value, index) => state || pred(value, index),
       escape: state => state
@@ -216,15 +203,15 @@ export namespace Collectors {
 
   /**
    * Returns a collector that returns true if all received element satisfies given `pred` predicate.
-   * @typeparam E the input element type
+   * @typeparam Elem the input element type
    * @example
    * ```typescript
    * iter([1, 3, 5, 7]).collect(Collectors.every(isOdd))
    * result: true
    * ```
    */
-  export function every<E>(pred: Pred<E>): Collector<E, boolean> {
-    return Collector.create({
+  export function every<Elem>(pred: Pred<Elem>): Op<Elem, boolean> {
+    return Op.create<Elem, boolean>({
       init: true,
       next: (state, value, index) => state && pred(value, index),
       escape: state => !state
@@ -233,27 +220,27 @@ export namespace Collectors {
 
   /**
    * Returns a collector that returns true if any received element equals given `elem`.
-   * @typeparam E the input element type
+   * @typeparam Elem the input element type
    * @example
    * ```typescript
    * iter([1, 3, 4, 7]).collect(Collectors.contains(3))
    * result: true
    * ```
    */
-  export function contains<E>(elem: E): Collector<E, boolean> {
+  export function contains<Elem>(elem: Elem): Op<Elem, boolean> {
     return some(e => e === elem)
   }
 
   /**
    * Returns a collector that returns true if any of the received elements is contained the given `elems`.
-   * @typeparam E the input element type
+   * @typeparam Elem the input element type
    * @example
    * ```typescript
    * iter([1, 3, 4, 7]).collect(Collectors.containsAny(3, 20, 10))
    * result: true
    * ```
    */
-  export function containsAny<E>(...elems: E[]): Collector<E, boolean> {
+  export function containsAny<Elem>(...elems: Elem[]): Op<Elem, boolean> {
     const set = new Set(elems)
     return some(e => set.has(e))
   }
@@ -266,7 +253,7 @@ export namespace Collectors {
    * result: false
    * ```
    */
-  export const and: MonoCollector<boolean> = every(v => v)
+  export const and: Op<boolean> = every(v => v)
 
   /**
    * Returns a collector that returns true if any received booleans is true
@@ -276,7 +263,7 @@ export namespace Collectors {
    * result: true
    * ```
    */
-  export const or: MonoCollector<boolean> = some(v => v)
+  export const or: Op<boolean> = some(v => v)
 
   /**
    * Returns a collector that returns true if any value is received
@@ -286,7 +273,7 @@ export namespace Collectors {
    * result: true
    * ```
    */
-  export const hasValue: Collector<any, boolean> = some(() => true)
+  export const hasValue: Op<any, boolean> = some(() => true)
 
   /**
    * Returns a collector that returns true if no value is received
@@ -296,24 +283,20 @@ export namespace Collectors {
    * result: false
    * ```
    */
-  export const noValue: Collector<any, boolean> = every(() => false)
+  export const noValue: Op<any, boolean> = every(() => false)
 
   /**
-   * Returns a collector that creates an array from the received elements.
-   * Note: modifies the provided `target` array by pushing elements to the end
-   * @typeparam E the element type
-   * @param target the target array to push elements to
-   * @example
-   * ```typescript
-   * iter.of(1, 3, 5, 7).collect(Collectors.toArray())
-   * result: [1, 3, 5, 7]
-   * ```
+   * Returns a collector that created a potentially reversed array from the input elements.
+   * @typeparam Elem the element type
+   * @param reversed if true will prepend elements to the target instead of append
+   * @param target an optional existing array to which the elements will be added
    */
-  export function toArray<E>(target?: E[]): Collector<E, E[]> {
-    return Collector.create({
+  export function toArray<Elem>(reversed: boolean = false, target?: Elem[]): Op<Elem, Elem[]> {
+    return Op.create({
       init: () => target || [],
       next: (arr, elem) => {
-        arr.push(elem)
+        if (reversed) arr.unshift(elem)
+        else arr.push(elem)
         return arr
       }
     })
@@ -322,8 +305,8 @@ export namespace Collectors {
   /**
    * Returns a collector that creates a Map from the received tuples of type [K, V].
    * Note: modifies the `target` Map
-   * @typeparam K the map key type
-   * @typeparam V the map value type
+   * @typeparam Key the map key type
+   * @typeparam Value the map value type
    * @param target the target Map
    * @example
    * ```typescript
@@ -331,8 +314,8 @@ export namespace Collectors {
    * result: Map(a -> 1, b -> 5)
    * ```
    */
-  export function toMap<K, V>(target?: Map<K, V>): Collector<[K, V], Map<K, V>> {
-    return Collector.create({
+  export function toMap<Key, Value>(target?: Map<Key, Value>): Op<[Key, Value], Map<Key, Value>> {
+    return Op.create({
       init: () => target || new Map(),
       next: (map, [key, value]) => map.set(key, value)
     })
@@ -341,7 +324,7 @@ export namespace Collectors {
   /**
    * Returns a collector that creates a Set from the received elements.
    * Note: modifies the `target` Set
-   * @typeparam E the element type
+   * @typeparam Elem the element type
    * @param target the target Set
    * @example
    * ```typescript
@@ -349,8 +332,8 @@ export namespace Collectors {
    * result: Set(1, 3, 5)
    * ```
    */
-  export function toSet<E>(target?: Set<E>): Collector<E, Set<E>> {
-    return Collector.create({
+  export function toSet<Elem>(target?: Set<Elem>): Op<Elem, Set<Elem>> {
+    return Op.create({
       init: () => target || new Set(),
       next: (set, value) => set.add(value)
     })
@@ -358,8 +341,8 @@ export namespace Collectors {
 
   /**
    * Returns a collector that creates a Dictionary using the given `keyFun` to generate keys for received elements.
-   * @typeparam K the dictionary key type
-   * @typeparam V the dictionary value type
+   * @typeparam Key the dictionary key type
+   * @typeparam Value the dictionary value type
    * @param keyFun a function that takes an element V and returns its key K
    * @example
    * ```typescript
@@ -367,37 +350,75 @@ export namespace Collectors {
    * result: Map(3 -> ['foo', 'bar'], 4 -> ['test'])
    * ```
    */
-  export function groupBy<K, V>(keyFun: (value: V, index: number) => K): Collector<V, Dict<K, V>> {
-    return Collector.create({
-      init: () => Dict.create<K, V>(),
-      next: (dict, value, index) => Dict.add(dict, keyFun(value, index), value)
+  export function groupBy<Key, Value>(
+    keyFun: (value: Value, index: number) => Key
+  ): Op<Value, Dict<Key, Value>> {
+    return groupByGen(keyFun, toArray())
+  }
+
+  /**
+   * Returns a collector that groups incoming value by given `keyFun`, and uses the `buildSeqOp` to create sequences of those values.
+   * @typeparam Key the dictionary key type
+   * @typeparam Value the dictionary value type
+   * @typeparam S the result sequence type
+   * @param keyFun a function that takes an element V and returns its key K
+   * @param buildSeqOp a collector that builds a structure from given elements Value
+   * @example
+   * ```typescript
+   * iter(['foo', 'test', 'bar']).collect(Collectors.groupByGen(v => v.length, Collectors.toSet()))
+   * result: Map(3 -> Set(['foo', 'bar']), 4 -> Set(['test']))
+   * ```
+   */
+  export function groupByGen<Key, Value, S>(
+    keyFun: (value: Value, index: number) => Key,
+    buildSeqOp: Op<Value, S>
+  ): Op<Value, Map<Key, S>> {
+    return Op.createState({
+      init: () => new Map<Key, { length: number; state: any }>(),
+      next: (map, value, index) => {
+        const key = keyFun(value, index)
+        let entry = map.get(key)
+        if (entry === undefined) {
+          entry = {
+            length: 0,
+            state: buildSeqOp.createInitState()
+          }
+          map.set(key, entry)
+        }
+        entry.state = buildSeqOp.nextState(entry.state, value, entry.length)
+        entry.length++
+        return map
+      },
+      stateToResult: map => {
+        for (const [key, { state, length }] of map) {
+          map.set(key, buildSeqOp.stateToResult(state, length) as any)
+        }
+        return map as any
+      }
     })
   }
 
   /**
    * Returns a collector that creates a UniqueDictionary using the given `keyFun` to generate keys for received elements.
-   * @typeparam K the dictionary key type
-   * @typeparam V the dictionary value type
-   * @param keyFun a function that takes an element V and returns its key K
+   * @typeparam Key the dictionary key type
+   * @typeparam Value the dictionary value type
+   * @param keyFun a function that takes an element Value and returns its key Key
    * @example
    * ```typescript
    * iter(['foo', 'test', 'foo']).collect(Collectors.groupBy(v => v.length))
    * result: Map(3 -> Set('foo'), 4 -> Set('test'))
    * ```
    */
-  export function groupByUnique<K, V>(
-    keyFun: (value: V, index: number) => K
-  ): Collector<V, UniqueDict<K, V>> {
-    return Collector.create({
-      init: () => UniqueDict.create<K, V>(),
-      next: (dict, value, index) => UniqueDict.add(dict, keyFun(value, index), value)
-    })
+  export function groupByUnique<Key, Value>(
+    keyFun: (value: Value, index: number) => Key
+  ): Op<Value, UniqueDict<Key, Value>> {
+    return groupByGen(keyFun, toSet())
   }
 
   /**
    * Returns a collector that creates a histogram of the received elements.
    * That is, it creates a Map with the elements as keys and the amount of occurrances as values.
-   * @typeparam E the element type
+   * @typeparam Elem the element type
    * @param sortBy if undefined will return the histogram in value order, if value is 'TOP' it will order the histogram
    *               from highest to lowest, otherwise it will order the histogram from lowest to highest frequency.
    * @param amount if `sortBy` is specified, this parameter limits the amount of results
@@ -407,15 +428,15 @@ export namespace Collectors {
    * result: Map('a' -> 1, 'd' -> 2, 'c' -> 2, 'b' -> 1)
    * ```
    */
-  export function histogram<E>(
+  export function histogram<Elem>(
     sortBy?: 'TOP' | 'BOTTOM',
     amount?: number
-  ): Collector<E, Histogram<E>> {
+  ): Op<Elem, Histogram<Elem>> {
     if (amount !== undefined && amount <= 0) {
-      return Collector.fixed(Histogram.create())
+      return Op.fixed(Histogram.create())
     }
 
-    const collector = Collector.create<E, Histogram<E>>({
+    const collector = Op.create<Elem, Histogram<Elem>>({
       init: () => Histogram.create(),
       next: Histogram.add
     })
@@ -434,16 +455,16 @@ export namespace Collectors {
 
   /**
    * Returns a collector that returns a Map with amount of occurances as keys, and the unique set of elements with that amount of occurrance as values
-   * @typeparam E the element type
+   * @typeparam Elem the element type
    * @example
    * ```typescript
    * iter('adcbcd').collect(Collectors.elementsByFreq())
    * result: Map(1 -> Set('a', 'b'), 2 -> Set('d', 'c'))
    * ```
    */
-  export function elementsByFreq<E>(): Collector<E, UniqueDict<number, E>> {
-    return histogram<E>().mapResult(dict => {
-      const result = UniqueDict.create<number, E>()
+  export function elementsByFreq<Elem>(): Op<Elem, UniqueDict<number, Elem>> {
+    return histogram<Elem>().mapResult(dict => {
+      const result = UniqueDict.create<number, Elem>()
       for (const key of dict.keys()) {
         UniqueDict.add(result, dict.get(key), key)
       }
@@ -454,16 +475,67 @@ export namespace Collectors {
   /**
    * Returns a collector that creates a tuple of element arrays based on the given `pred`.
    * The first array are the elements that satisfy `pred`, and the second array contains those that don't.
-   * @typeparam E the element type
-   * @param pred a predicate over elements E
+   * @typeparam Elem the element type
+   * @param pred a predicate over elements Elem
    * @example
    * ```typescript
    * iter([1, 2, 3, 4, 5]).collect(Collectors.partition(isEven))
    * result: [[2, 4], [1, 3, 5]]
    * ```
    */
-  export function partition<E>(pred: Pred<E>): Collector<E, [E[], E[]]> {
-    return groupBy(pred).mapResult((map): [E[], E[]] => [map.get(true) || [], map.get(false) || []])
+  export function partition<Elem>(pred: Pred<Elem>): Op<Elem, [Elem[], Elem[]]> {
+    return partitionGen(pred, toArray())
+  }
+
+  /**
+   * Returns a collector that creates a tuple of structures build with `buildSeqOp` based on the given `pred`.
+   * The first structure contains the elements that satisfy `pred`, and the second structure contains those that don't.
+   * @typeparam Elem the element type
+   * @param pred a predicate over elements Elem
+   * @param buildSeqOp a collector that builds a structure from given elements Elem
+   * @example
+   * ```typescript
+   * iter([1, 2, 3, 4, 5]).collect(Collectors.partitionGen(isEven, Collectors.toSet()))
+   * result: [Set([2, 4]), Set([1, 3, 5])]
+   * ```
+   */
+  export function partitionGen<Elem, S>(
+    pred: Pred<Elem>,
+    buildSeqOp: Op<Elem, S>
+  ): Op<Elem, [S, S]> {
+    const empty = () => buildSeqOp.stateToResult(buildSeqOp.createInitState(), 0)
+
+    return groupByGen(pred, buildSeqOp).mapResult(
+      (map): [S, S] => [map.get(true) || empty(), map.get(false) || empty()]
+    )
+  }
+
+  /**
+   * Returns a collector that creates a tuple of element arrays where the first array contains the elements upto the given 'index', and the second array contains the other elements.
+   * @typeparam Elem the element type
+   * @param index the index at which to start the second array
+   * @example
+   * ```typescript
+   * iter([1, 2, 3, 4, 5]).collect(Collectors.splitAt(3))
+   * result: [[1, 2, 3], [4, 5]]
+   * ```
+   */
+  export function splitAt<Elem>(index: number): Op<Elem, [Elem[], Elem[]]> {
+    return splitAtGen(index, toArray())
+  }
+
+  /**
+   * Returns a collector that creates a tuple of structures build by `buildSeqOp` where the first structure contains the elements upto the given 'index', and the second structure contains the other elements.
+   * @typeparam Elem the element type
+   * @param index the index at which to start the second array
+   * @example
+   * ```typescript
+   * iter([1, 2, 3, 4, 5]).collect(Collectors.splitAtGen(3, Collectors.toSet()))
+   * result: [Set([1, 2, 3]), Set([4, 5])]
+   * ```
+   */
+  export function splitAtGen<Elem, S>(index: number, buildSeqOp: Op<Elem, S>): Op<Elem, [S, S]> {
+    return partitionGen((_, i) => i < index, buildSeqOp)
   }
 
   /**
@@ -474,7 +546,7 @@ export namespace Collectors {
    * result: 8
    * ```
    */
-  export const sum: MonoCollector<number> = Collector.createMono({
+  export const sum: Op<number> = Op.create({
     init: 0,
     next: (state, num) => state + num
   })
@@ -487,7 +559,7 @@ export namespace Collectors {
    * result: 10
    * ```
    */
-  export const product: MonoCollector<number> = Collector.createMono({
+  export const product: Op<number> = Op.create({
     init: 1,
     next: (state, num) => state * num,
     escape: state => state === 0
@@ -501,7 +573,7 @@ export namespace Collectors {
    * result: 3
    * ```
    */
-  export const average: MonoCollector<number> = Collector.createMono({
+  export const average: Op<number> = Op.create({
     init: 0,
     next: (avg, value, index) => avg + (value - avg) / (index + 1)
   })
@@ -509,25 +581,37 @@ export namespace Collectors {
   /**
    * Returns a collector that takes the first element of the iterable, and then uses the result of the `choice` function to decide
    * whether to keep the currently chosen value, or the new element.
+   * @typeparam Elem the element type
    * @param choice a function taking two elements, and returning false to keep the first, and true to keep the second element
    * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
    *    - not specified / undefined: If the Iterable is empty, this function will throw an error
-   *    - (value: E): If the Iterable is empty, it will return the given value instead
-   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   *    - (value: Elem): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => Elem): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * iter(['abCd', 'plCf', 'bcae']).collect(Collectors.choose((chosen, next) => next[2] === chosen[2]))
    * result: 'plc'
    * ```
    */
-  export function choose<E>(
-    choice: (chosen: E, next: E) => boolean,
-    otherwise: OptLazy<E> = throwCollectError
-  ) {
-    return Collector.createState<E, NoValue | E, E>({
+  export function choose<Elem>(
+    choice: (chosen: Elem, next: Elem, index: number) => boolean,
+    otherwise: OptLazy<Elem> = throwCollectError
+  ): Op<Elem> {
+    return chooseOpt<Elem>(
+      (chosen, next, index) => chosen === NoValue || choice(chosen, next, index)
+    ).mapResult(result => {
+      if (result === NoValue) return OptLazy.toValue(otherwise)
+      return result
+    })
+  }
+
+  function chooseOpt<Elem>(
+    choice: (chosen: Elem | NoValue, next: Elem, index: number) => boolean
+  ): Op<Elem, Elem | NoValue> {
+    return Op.createState<Elem, Elem | NoValue, Elem | NoValue>({
       init: NoValue,
-      next: (state, elem) => (state === NoValue || choice(state, elem) ? elem : state),
-      stateToResult: state => (state === NoValue ? OptLazy.toValue(otherwise) : state)
+      next: (state, elem, index) => (choice(state, elem, index) ? elem : state),
+      stateToResult: state => state
     })
   }
 
@@ -543,7 +627,7 @@ export namespace Collectors {
    * result: 1
    * ```
    */
-  export function min(otherwise: OptLazy<number> = throwCollectError): MonoCollector<number> {
+  export function min(otherwise: OptLazy<number> = throwCollectError): Op<number> {
     return choose((chosen, next) => next < chosen, otherwise)
   }
 
@@ -559,7 +643,7 @@ export namespace Collectors {
    * result: 4
    * ```
    */
-  export function max(otherwise: OptLazy<number> = throwCollectError): MonoCollector<number> {
+  export function max(otherwise: OptLazy<number> = throwCollectError): Op<number> {
     return choose((chosen, next) => next > chosen, otherwise)
   }
 
@@ -572,27 +656,28 @@ export namespace Collectors {
    * result: [1, 4]
    * ```
    */
-  export const range: Collector<number, [number, number]> = Collector.combine(min(), max())
+  export const range: Op<number, [number, number]> = Op.combine(min(), max())
 
   /**
    * Returns a collector that performs the `toNumber` function on each element, and returns the element for which the result
    * of `toNumber` returned the minimum value.
+   * @typeparam Elem the element type
    * @param toNumber a function taking an element an returning a number to compare
    * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
    *    - not specified / undefined: If the Iterable is empty, this function will throw an error
-   *    - (value: E): If the Iterable is empty, it will return the given value instead
-   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   *    - (value: Elem): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => Elem): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * iter(['aa', 'a', 'aaa']).collect(Collectors.minBy(w => w.length))
    * result: 'a'
    * ```
    */
-  export function minBy<E>(
-    toNumber: (value: E) => number,
-    otherwise: OptLazy<E> = throwCollectError
-  ): MonoCollector<E> {
-    return Collector.createState<E, undefined | { minElem: E; minNumber: number }, E>({
+  export function minBy<Elem>(
+    toNumber: (value: Elem) => number,
+    otherwise: OptLazy<Elem> = throwCollectError
+  ): Op<Elem> {
+    return Op.createState<Elem, undefined | { minElem: Elem; minNumber: number }, Elem>({
       init: undefined,
       next: (state, elem) => {
         const elemNumber = toNumber(elem)
@@ -615,22 +700,23 @@ export namespace Collectors {
   /**
    * Returns a collector that performs the `toNumber` function on each element, and returns the element for which the result
    * of `toNumber` returned the maximum value.
+   * @typeparam Elem the element type
    * @param toNumber a function taking an element an returning a number to compare
    * @param otherwise specifies how to deal with the potential case that the Iterable is empty. There are three cases:
    *    - not specified / undefined: If the Iterable is empty, this function will throw an error
-   *    - (value: E): If the Iterable is empty, it will return the given value instead
-   *    - (f: () => E): If the Iterable is empty, it will return the value resulting from executing `f()`
+   *    - (value: Elem): If the Iterable is empty, it will return the given value instead
+   *    - (f: () => Elem): If the Iterable is empty, it will return the value resulting from executing `f()`
    * @example
    * ```typescript
    * iter(['aa', 'a', 'aaa']).collect(Collectors.maxBy(w => w.length))
    * result: 'aaa'
    * ```
    */
-  export function maxBy<E>(
-    toNumber: (value: E) => number,
-    otherwise: OptLazy<E> = throwCollectError
-  ): MonoCollector<E> {
-    const negativeToNumber = (v: E) => -toNumber(v)
+  export function maxBy<Elem>(
+    toNumber: (value: Elem) => number,
+    otherwise: OptLazy<Elem> = throwCollectError
+  ): Op<Elem> {
+    const negativeToNumber = (v: Elem) => -toNumber(v)
     return minBy(negativeToNumber, otherwise)
   }
 
@@ -645,7 +731,7 @@ export namespace Collectors {
    * result: ['a', 'aaa']
    * ```
    */
-  export function rangeBy<E>(toNumber: (value: E) => number): Collector<E, [E, E]> {
-    return Collector.combine(minBy(toNumber), maxBy(toNumber))
+  export function rangeBy<Elem>(toNumber: (value: Elem) => number): Op<Elem, [Elem, Elem]> {
+    return Op.combine(minBy(toNumber), maxBy(toNumber))
   }
 }

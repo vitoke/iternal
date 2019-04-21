@@ -4,7 +4,7 @@
  * all options are optional
  */
 
-import { asyncIter, Collector, Collectors, iter } from '..'
+import iter, { asyncIter } from '..'
 
 const fs = require('fs')
 
@@ -13,7 +13,7 @@ const { file = 'README.md', split = '\n ' } = iter(process.argv)
   .drop(2)
   .sliding(2)
   .map(([opt, value]): [string, string] => [opt.slice(1), value])
-  .collect(Collectors.toObject())
+  .collect(iter.ops.toObject())
 
 // Read file into string
 const fileIter = asyncIter
@@ -27,10 +27,10 @@ async function run() {
     .flatMap<string>(text => text.split(new RegExp(`[${split}]`)))
     .filter(word => word.length > 1)
     .collect(
-      Collector.combine(
-        Collectors.histogram('TOP', 5),
-        Collectors.average.mapInput(word => word.length),
-        Collectors.rangeBy(word => word.length)
+      iter.collector.combine(
+        iter.ops.histogram('TOP', 5),
+        iter.ops.average.mapInput(word => word.length),
+        iter.ops.rangeBy(word => word.length)
       )
     )
 

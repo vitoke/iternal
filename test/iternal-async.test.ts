@@ -1,9 +1,9 @@
-import { asyncIter, AsyncIter, Collectors, iter } from '../src/lib/public/iternal'
+import iter, { asyncIter, AsyncIter, ops } from '../src/lib/public/iternal'
 import { addIndex, double, isEven, isOdd, less3, remove, sum } from './test-utils'
 
 const expectAsyncIter = <T>(iter: AsyncIter<T>) => async (resultIt: Iterable<T>) =>
-  expect(await iter.collect(Collectors.toArray())).toEqual(
-    await asyncIter(resultIt).collect(Collectors.toArray())
+  expect(await iter.collect(ops.toArray())).toEqual(
+    await asyncIter(resultIt).collect(ops.toArray())
   )
 
 const expectAsyncToThrow = async (f: () => void) => {
@@ -12,14 +12,15 @@ const expectAsyncToThrow = async (f: () => void) => {
   try {
     await f()
     succeeded = true
-    // tslint:disable-next-line:no-empty
-  } catch (e) {}
+  } catch (e) {
+    //
+  }
 
   if (succeeded) throw new Error('should have thrown')
 }
 
 describe('AsyncIter', () => {
-  const iter0 = asyncIter.empty
+  const iter0 = asyncIter.empty<number>()
   const iter1 = asyncIter.fromIterator<number>(async function*() {
     yield 1
   })
@@ -522,7 +523,7 @@ describe('AsyncIter', () => {
   })
 
   test('splitOnElem', async () => {
-    await expectAsyncIter(asyncIter.empty.splitOnElem(' '))([])
+    await expectAsyncIter(asyncIter.empty().splitOnElem(' '))([])
     await expectAsyncIter(
       iter('po po')
         .toAsync()
@@ -558,7 +559,7 @@ describe('AsyncIter', () => {
   })
 
   test('mkGroup', async () => {
-    await expectAsyncIter(asyncIter.empty.mkGroup('(#', ',', '#)'))(['(', '#', '#', ')'])
+    await expectAsyncIter(asyncIter.empty().mkGroup('(#', ',', '#)'))(['(', '#', '#', ')'])
     await expectAsyncIter(
       iter
         .of('A')

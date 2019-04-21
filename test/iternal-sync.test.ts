@@ -5,7 +5,7 @@ const expectIter = <T>(iter: Iter<T>) => (resIt: Iterable<T>) =>
   expect(iter.toArray()).toEqual([...resIt])
 
 describe('Iter', () => {
-  const iter0 = iter.empty
+  const iter0 = iter.empty<number>()
   const iter1 = iter.of(1)
   const iter3 = iter.of(1, 2, 3)
   const iterInf = iter.nats
@@ -312,6 +312,7 @@ describe('Iter', () => {
     expectIter(iter1.repeat().take(3))([1, 1, 1])
     expectIter(iter1.repeat(3))([1, 1, 1])
     expectIter(iter3.repeat().take(4))([1, 2, 3, 1])
+
     expectIter(iter3.repeat(2))([1, 2, 3, 1, 2, 3])
     expectIter(iterInf.repeat().take(4))([0, 1, 2, 3])
   })
@@ -458,7 +459,7 @@ describe('Iter', () => {
   })
 
   test('mkGroup', () => {
-    expectIter(iter.empty.mkGroup('(#', ',', '#)'))(['(', '#', '#', ')'])
+    expectIter(iter.empty().mkGroup('(#', ',', '#)'))(['(', '#', '#', ')'])
     expectIter(iter.of('a').mkGroup('(', ',', ')'))(['(', 'a', ')'])
     expectIter(iter('abc').mkGroup('(', ',', ')'))(['(', 'a', ',', 'b', ',', 'c', ')'])
   })

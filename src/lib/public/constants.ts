@@ -85,7 +85,7 @@ export type MapFun<A, B> = IterFun<A, B>
  * @typeparam E the element type
  * @typeparam S the state type
  */
-export type ReduceFun<E, S> = (state: S, elem: E, index: number) => S
+export type ReduceFun<E, S = E> = (state: S, elem: E, index: number) => S
 
 /**
  * An Iterable or AsyncIterable of element type E

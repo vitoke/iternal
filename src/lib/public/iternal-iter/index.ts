@@ -26,19 +26,36 @@ import {
   MonitorEffect,
   NonEmpty,
   OptLazy,
-  Pred
+  Pred,
+  ReduceFun
 } from '../constants'
-import { Collector, MonoFun } from '../iternal-collect/collector'
+import { Op } from '../iternal-collect/collector'
+import { ops as opsCollectors } from '../iternal-collect/collectors'
 
 function toIterator<T>(iterable: Iterable<T>): Iterator<T> {
   return getIterator(checkPureIterable(iterable))
 }
 
+type ZipIters<CS extends [any, ...any[]]> = Iterable<any>[] & { [K in keyof CS]: Iterable<CS[K]> }
+
+type OptList<CS extends [any, ...any[]]> = { [K in keyof CS]: CS[K] | undefined }
+
+type ZipAnyIters<CS extends [any, ...any[]]> = AnyIterable<any>[] &
+  { [K in keyof CS]: AnyIterable<CS[K]> }
+
+type Unshift<List extends any[], Item> = ((first: Item, ...rest: List) => any) extends ((
+  ...list: infer R
+) => any)
+  ? R
+  : never
+
+const DONE: IteratorResult<any> = { done: true } as any
+
 /**
  * Enrichment class allowing for manipulation of synchronous iterables.
  * @typeparam T the element type.
  */
-export class Iter<T> implements Iterable<T> {
+export class Iter<Elem> implements Iterable<Elem> {
   /**
    * Returns an Iter yielding items from an iterable
    * @typeparam E The type of elements the Iterable yields.
@@ -49,7 +66,7 @@ export class Iter<T> implements Iterable<T> {
     return new Iter(iterable)
   }
 
-  private constructor(private readonly iterable: Iterable<T>) {
+  private constructor(private readonly iterable: Iterable<Elem>) {
     if (iterable instanceof Iter) {
       throw error(Errors.InternalError, 'unnecessary nesting')
     }
@@ -57,7 +74,7 @@ export class Iter<T> implements Iterable<T> {
   }
 
   private get isEmptyInstance() {
-    return this === iter.empty
+    return this === iter.empty()
   }
 
   /**
@@ -76,60 +93,81 @@ export class Iter<T> implements Iterable<T> {
    * result (example): 'foo2,foo3'
    * ```
    */
-  applyCustomOperation<R>(createIterator: (iterable: Iterable<T>) => Iterator<R>): Iter<R> {
+  applyCustomOperation<R>(createIterator: (iterable: Iterable<Elem>) => Iterator<R>): Iter<R> {
     return iter.fromIterator(() => createIterator(this))
+  }
+
+  private applyCustom<R>(createIterator: (iterator: Iterator<Elem>) => Iterator<R>): Iter<R> {
+    return iter.fromIterator(() => createIterator(this[Symbol.iterator]()))
   }
 
   /**
    * Iterable interface: When called, returns an Iterator of type T
    */
-  [Symbol.iterator](): Iterator<T> {
+  [Symbol.iterator](): Iterator<Elem> {
     return getIterator(this.iterable)
   }
 
   /**
    * Applies the values of the current Iter to the given `collector` and returns the result.
    * @typeparam R the result type of the collector
-   * @param collector the collector to apply
+   * @param op the collector to apply
    * @example
    * ```typescript
    * iter.of(1, 3, 5).collect(Collectors.sum)
    * result: 9
    * ```
    */
-  collect<R>(collector: Collector<T, R>): R {
-    let result = collector.createInitState()
+  collect<Res>(op: Op<Elem, Res>): Res {
+    let state = op.createInitState()
     let index = 0
 
     for (const e of this) {
-      result = collector.nextState(result, e, index++)
+      state = op.nextState(state, e, index++)
 
-      if (optPred(result, index, collector.escape)) {
-        return collector.stateToResult(result, index)
+      if (op.escape && op.escape(state, index)) {
+        return op.stateToResult(state, index)
       }
     }
-    return collector.stateToResult(result, index)
+    return op.stateToResult(state, index)
   }
 
   /**
    * Returns an Iter yielding each result of applying the collector to the next element in this Iter.
    * @typeparam R the result type of the collector
-   * @param collector the collector to apply
+   * @param op the collector to apply
    * @example
    * ```typescript
    * iter.of(1, 3, 4).collectIter(Collectors.sum)
    * result: (1, 4, 8)
    * ```
    */
-  collectIter<R>(collector: Collector<T, R>): Iter<R> {
-    return this.applyCustomOperation(function*(iterable) {
-      let result = collector.createInitState()
+  collectIter<R>(op: Op<Elem, R>): Iter<R> {
+    return this.applyCustom(iterator => {
+      let state = op.createInitState()
       let index = 0
+      let isDone = false
 
-      for (const e of iterable) {
-        result = collector.nextState(result, e, index++)
-        yield collector.stateToResult(result, index)
-        if (optPred(result, index, collector.escape)) return
+      return {
+        next(): IteratorResult<R> {
+          while (!isDone) {
+            const { value, done } = iterator.next()
+
+            isDone = done
+
+            if (!isDone) {
+              state = op.nextState(state, value, index++)
+
+              isDone = optPred(state, index, op.escape)
+
+              return {
+                done: false,
+                value: state
+              }
+            }
+          }
+          return DONE
+        }
       }
     })
   }
@@ -139,7 +177,7 @@ export class Iter<T> implements Iterable<T> {
    * Note: eagerly gets all values from the iterable.
    * @param effect a function taking an element of the Iter and optionally its index and performs some side-effect.
    */
-  forEach(effect?: Effect<T>): void {
+  forEach(effect?: Effect<Elem>): void {
     if (effect === undefined) {
       for (const elem of this);
       return
@@ -159,12 +197,31 @@ export class Iter<T> implements Iterable<T> {
    * result: (1, 4, 7)
    * ```
    */
-  map<R>(mapFun: MapFun<T, R>): Iter<R> {
-    if (this.isEmptyInstance) return iter.empty
+  map<R>(mapFun: MapFun<Elem, R>): Iter<R> {
+    if (this.isEmptyInstance) return iter.empty()
 
-    return this.applyCustomOperation(function*(iterable) {
+    return this.applyCustom(iterator => {
+      let isDone = false
       let index = 0
-      for (const elem of iterable) yield mapFun(elem, index++)
+
+      return {
+        next(): IteratorResult<R> {
+          while (!isDone) {
+            const { done, value } = iterator.next()
+
+            isDone = done
+
+            if (!isDone) {
+              return {
+                done: false,
+                value: mapFun(value, index++)
+              }
+            }
+          }
+
+          return DONE
+        }
+      }
     })
   }
 
@@ -177,7 +234,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (3, 7)
    * ```
    */
-  filter(pred: Pred<T>): Iter<T> {
+  filter(pred: Pred<Elem>): Iter<Elem> {
     return this.filterNot((v, i) => !pred(v, i))
   }
 
@@ -190,7 +247,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (1, 3, 5, 7, ...)
    * ```
    */
-  filterNot(pred: Pred<T>): Iter<T> {
+  filterNot(pred: Pred<Elem>): Iter<Elem> {
     return this.patchWhere(pred, 1)
   }
 
@@ -204,13 +261,34 @@ export class Iter<T> implements Iterable<T> {
    * result: (1, 2, 2, 3, 3, 3, ...)
    * ```
    */
-  flatMap<R>(flatMapFun: (elem: T, index: number) => Iterable<R>): Iter<R> {
-    if (this.isEmptyInstance) return iter.empty
+  flatMap<R>(flatMapFun: (elem: Elem, index: number) => Iterable<R>): Iter<R> {
+    if (this.isEmptyInstance) return iter.empty()
 
-    return this.applyCustomOperation(function*(iterable) {
+    return this.applyCustom(iterator => {
+      let isDone = false
+      let current: Iterator<R>
+      let isCurrentDone = true
       let index = 0
-      for (const elem of iterable) {
-        yield* checkPureIterable(flatMapFun(elem, index++))
+
+      return {
+        next(): IteratorResult<R> {
+          while (!isDone) {
+            if (isCurrentDone) {
+              const { value, done } = iterator.next()
+              isDone = done
+
+              if (isDone) return DONE
+              current = getIterator(flatMapFun(value, index++))
+            }
+
+            const nextResult = current.next()
+            isCurrentDone = nextResult.done
+
+            if (!isCurrentDone) return nextResult
+          }
+
+          return DONE
+        }
       }
     })
   }
@@ -224,11 +302,8 @@ export class Iter<T> implements Iterable<T> {
    * result: (2, 4, 5, 3, 1, 2, 3, ...)
    * ```
    */
-  concat(...otherIterables: NonEmpty<Iterable<T>>): Iter<T> {
-    return iter
-      .of<Iterable<T>>(this, ...otherIterables)
-      .filter(it => it !== iter.empty)
-      .flatMap(it => checkPureIterable(it))
+  concat(...otherIterables: NonEmpty<Iterable<Elem>>): Iter<Elem> {
+    return iter.of<Iterable<Elem>>(this, ...otherIterables).flatMap(it => checkPureIterable(it))
   }
 
   /**
@@ -240,7 +315,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (1, 3, 5, 6, 7)
    * ```
    */
-  append(...elems: NonEmpty<T>): Iter<T> {
+  append(...elems: NonEmpty<Elem>): Iter<Elem> {
     return this.concat(elems)
   }
 
@@ -253,7 +328,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (6, 7, 1, 3, 5)
    * ```
    */
-  prepend(...elems: NonEmpty<T>): Iter<T> {
+  prepend(...elems: NonEmpty<Elem>): Iter<Elem> {
     return iter(elems).concat(this)
   }
 
@@ -266,7 +341,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (3, 4, 5, 6, ...)
    * ```
    */
-  drop(amount: number): Iter<T> {
+  drop(amount: number): Iter<Elem> {
     return this.patchAt(0, amount)
   }
 
@@ -278,16 +353,32 @@ export class Iter<T> implements Iterable<T> {
    * result: (0, 1, 2, 3, 4)
    * ```
    */
-  dropLast(amount: number): Iter<T> {
+  dropLast(amount: number): Iter<Elem> {
     if (amount <= 0) return this
     if (this.isEmptyInstance) return this
 
-    return this.applyCustomOperation(function*(iterable) {
-      const buffer: T[] = []
+    return this.applyCustom(iterator => {
+      const buffer: IteratorResult<Elem>[] = []
+      let isDone = false
 
-      for (const elem of iterable) {
-        buffer.push(elem)
-        if (buffer.length > amount) yield buffer.shift() as T
+      return {
+        next(): IteratorResult<Elem> {
+          while (!isDone) {
+            const nextResult = iterator.next()
+
+            isDone = nextResult.done
+
+            if (!isDone) {
+              buffer.push(nextResult)
+
+              if (buffer.length > amount) {
+                return buffer.shift()!
+              }
+            }
+          }
+
+          return DONE
+        }
       }
     })
   }
@@ -301,15 +392,24 @@ export class Iter<T> implements Iterable<T> {
    * result: (0, 1, 2, 3)
    * ```
    */
-  take(amount: number): Iter<T> {
-    if (amount <= 0 || this.isEmptyInstance) return iter.empty
+  take(amount: number): Iter<Elem> {
+    if (amount <= 0 || this.isEmptyInstance) return iter.empty()
 
-    return this.applyCustomOperation(function*(iterable) {
-      let toTake = amount
+    return this.applyCustom(iterator => {
+      let remain = amount
 
-      for (const elem of iterable) {
-        if (toTake-- <= 0) return
-        yield elem
+      return {
+        next() {
+          while (remain > 0) {
+            const nextResult = iterator.next()
+
+            remain = nextResult.done ? 0 : remain - 1
+
+            if (remain >= 0) return nextResult
+          }
+
+          return DONE
+        }
       }
     })
   }
@@ -322,18 +422,32 @@ export class Iter<T> implements Iterable<T> {
    * result: (7, 8, 9)
    * ```
    */
-  takeLast(amount: number): Iter<T> {
-    if (amount <= 0) return iter.empty
+  takeLast(amount: number): Iter<Elem> {
+    if (amount <= 0) return iter.empty()
     if (this.isEmptyInstance) return this
 
-    return this.applyCustomOperation(function*(iterable) {
-      const buffer: T[] = []
+    return this.applyCustom(iterator => {
+      let isDone = false
+      const buffer: IteratorResult<Elem>[] = []
 
-      for (const elem of iterable) {
-        buffer.push(elem)
-        if (buffer.length > amount) buffer.shift()
+      return {
+        next(): IteratorResult<Elem> {
+          while (!isDone) {
+            const nextResult = iterator.next()
+
+            isDone = nextResult.done
+
+            if (!isDone) {
+              buffer.push(nextResult)
+              if (buffer.length > amount) buffer.shift()
+            }
+          }
+
+          if (buffer.length <= 0) return DONE
+
+          return buffer.shift()!
+        }
       }
-      yield* buffer
     })
   }
 
@@ -360,14 +474,25 @@ export class Iter<T> implements Iterable<T> {
    * result: (0, 1, 2, 3, 4)
    * ```
    */
-  takeWhile(pred: Pred<T>) {
-    if (this.isEmptyInstance) return iter.empty
+  takeWhile(pred: Pred<Elem>): Iter<Elem> {
+    if (this.isEmptyInstance) return iter.empty()
 
-    return this.applyCustomOperation(function*(iterable) {
+    return this.applyCustom(iterator => {
+      let isDone = false
       let index = 0
-      for (const elem of iterable) {
-        if (pred(elem, index++)) yield elem
-        else return
+
+      return {
+        next(): IteratorResult<Elem> {
+          while (!isDone) {
+            const nextResult = iterator.next()
+
+            isDone = nextResult.done || !pred(nextResult.value, index++)
+
+            if (!isDone) return nextResult
+          }
+
+          return DONE
+        }
       }
     })
   }
@@ -381,17 +506,24 @@ export class Iter<T> implements Iterable<T> {
    * result: (5, 6, 7, 8, ...)
    * ```
    */
-  dropWhile(pred: Pred<T>): Iter<T> {
-    if (this.isEmptyInstance) return iter.empty
+  dropWhile(pred: Pred<Elem>): Iter<Elem> {
+    if (this.isEmptyInstance) return iter.empty()
 
-    return this.applyCustomOperation(function*(iterable) {
-      const iterator = (getIterator(iterable) as any) as Iterable<T>
+    return this.applyCustom(iterator => {
       let index = 0
+      let passThrough = false
 
-      for (const elem of iterator) {
-        if (!pred(elem, index++)) {
-          yield elem
-          return yield* iterator
+      return {
+        next(): IteratorResult<Elem> {
+          if (passThrough) return iterator.next()
+
+          while (true) {
+            const nextResult = iterator.next()
+
+            passThrough = nextResult.done || !pred(nextResult.value, index++)
+
+            if (passThrough) return nextResult
+          }
         }
       }
     })
@@ -410,14 +542,16 @@ export class Iter<T> implements Iterable<T> {
    * result: 6
    * ```
    */
-  reduce(op: MonoFun<T>, otherwise?: OptLazy<T>): T {
-    let result: T | NoValue = NoValue
+  reduce(op: ReduceFun<Elem>, otherwise?: OptLazy<Elem>): Elem {
+    let result: Elem | NoValue = NoValue
 
     let index = 0
+
     for (const elem of this) {
       if (result === NoValue) result = elem
       else result = op(result, elem, index++)
     }
+
     if (result === NoValue) {
       if (otherwise === undefined) throw Error('no value')
       return OptLazy.toValue(otherwise)
@@ -441,34 +575,49 @@ export class Iter<T> implements Iterable<T> {
    * result: (5, 3, 5)
    * ```
    */
-  zipWith<O, R, T>(
-    zipFun: (t: T, o: O, ...others: unknown[]) => R,
-    other1Iterable: Iterable<O>,
-    ...otherIterables: Iterable<unknown>[]
+  zipWith<O extends NonEmpty<any>, R>(
+    zipFun: (t: Elem, ...others: O) => R,
+    ...otherIterables: ZipIters<O>
   ): Iter<R> {
-    if (
-      this.isEmptyInstance ||
-      other1Iterable === iter.empty ||
-      otherIterables.some(i => i === iter.empty)
-    ) {
-      return iter.empty
+    if (this.isEmptyInstance || otherIterables.some(i => i === iter.empty())) {
+      return iter.empty()
     }
 
-    return this.applyCustomOperation(function*(iterable) {
-      const iterators = [
-        toIterator(iterable),
-        toIterator(other1Iterable),
-        ...otherIterables.map(toIterator)
-      ]
+    return this.applyCustom(iterator => {
+      const otherIterators = otherIterables.map(toIterator)
+      let isDone = false
 
-      while (true) {
-        const values = []
-        for (const iterator of iterators) {
-          const { value, done } = iterator.next()
-          if (done) return
-          values.push(value)
+      return {
+        next(): IteratorResult<R> {
+          while (!isDone) {
+            const values: any[] = []
+
+            const firstResult = iterator.next()
+
+            isDone = firstResult.done
+            if (isDone) return DONE
+
+            values.push(firstResult.value)
+
+            for (const otherIterator of otherIterators) {
+              const otherResult = otherIterator.next()
+
+              isDone = otherResult.done
+              if (isDone) return DONE
+
+              values.push(otherResult.value)
+            }
+
+            const [first, ...rest] = values
+
+            return {
+              done: false,
+              value: zipFun(first, ...(rest as any))
+            }
+          }
+
+          return DONE
         }
-        yield zipFun(...(values as [T, O, ...unknown[]]))
       }
     })
   }
@@ -486,13 +635,10 @@ export class Iter<T> implements Iterable<T> {
    * result: ([0, 5], [1, 2], [3, 3])
    * ```
    */
-  zip<O>(
-    other1Iterable: Iterable<O>,
-    ...otherIterables: Iterable<any>[]
-  ): Iter<[T, O, ...unknown[]]> {
-    const toTuple = (...args: [T, O, ...unknown[]]): [T, O, ...unknown[]] => args
+  zip<O extends NonEmpty<any>>(...otherIterables: ZipIters<O>): Iter<Unshift<O, Elem>> {
+    const toTuple = (arg: Elem, ...args: O): Unshift<O, Elem> => [arg, ...args] as any
 
-    return this.zipWith(toTuple, other1Iterable, ...otherIterables)
+    return this.zipWith(toTuple, ...(otherIterables as any))
   }
 
   /**
@@ -503,8 +649,8 @@ export class Iter<T> implements Iterable<T> {
    * result: (['a', 0], ['a', 1], ['a', 2])
    * ```
    */
-  zipWithIndex(): Iter<[T, number]> {
-    return this.map((e, i): [T, number] => [e, i])
+  zipWithIndex(): Iter<[Elem, number]> {
+    return this.map((e, i): [Elem, number] => [e, i])
   }
 
   /**
@@ -522,26 +668,35 @@ export class Iter<T> implements Iterable<T> {
    * result: ([5, 0], [7, 10], [undefined, 3])
    * ```
    */
-  zipAllWith<O, R>(
-    zipFun: (t?: T, o?: O, ...others: unknown[]) => R,
-    other1Iterable: Iterable<O>,
-    ...otherIterables: Iterable<any>[]
+  zipAllWith<O extends NonEmpty<any>, R>(
+    zipFun: (t?: Elem, ...others: OptList<O>) => R,
+    ...otherIterables: ZipIters<O>
   ): Iter<R> {
-    return this.applyCustomOperation(function*(iterable) {
-      const iterators = [
-        toIterator(iterable),
-        toIterator(other1Iterable),
-        ...otherIterables.map(toIterator)
-      ]
+    return this.applyCustom(iterator => {
+      const otherIterators = otherIterables.map(toIterator)
+      let allDone = false
 
-      while (true) {
-        const results = iterators.map(it => it.next())
+      return {
+        next(): IteratorResult<R> {
+          if (allDone) return DONE
+          const values: any[] = []
 
-        if (results.every(r => r.done)) return
+          const { value, done } = iterator.next()
+          allDone = done
+          values.push(done ? undefined : value)
 
-        const values = results.map(r => (r.done ? undefined : r.value))
-        const zipOpt = zipFun(...values)
-        yield zipOpt
+          for (const otherIterator of otherIterators) {
+            const { value, done } = otherIterator.next()
+            allDone = allDone && done
+            values.push(done ? undefined : value)
+          }
+
+          if (allDone) return DONE
+          return {
+            done: false,
+            value: zipFun(...(values as any))
+          }
+        }
       }
     })
   }
@@ -559,13 +714,10 @@ export class Iter<T> implements Iterable<T> {
    * result: ([1, 'a'], [5, 'c'], [6, undefined])
    * ```
    */
-  zipAll<O>(
-    other1Iterable: Iterable<O>,
-    ...otherIterables: Iterable<any>[]
-  ): Iter<[T?, O?, ...unknown[]]> {
-    const toTuple = (...args: [T?, O?, ...any[]]) => args
+  zipAll<O extends NonEmpty<any>>(...otherIterables: ZipIters<O>): Iter<OptList<Unshift<O, Elem>>> {
+    const toTuple: any = (...args: any[]) => args
 
-    return this.zipAllWith(toTuple, other1Iterable, ...otherIterables)
+    return this.zipAllWith(toTuple, ...(otherIterables as any))
   }
 
   /**
@@ -577,7 +729,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (1, 3, 4)
    * ```
    */
-  indicesWhere(pred: Pred<T>): Iter<number> {
+  indicesWhere(pred: Pred<Elem>): Iter<number> {
     return this.zipWithIndex()
       .filter(([elem, index]) => pred(elem, index))
       .map(([_, index]) => index)
@@ -592,7 +744,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (0, 2, 5)
    * ```
    */
-  indicesOf(elem: T): Iter<number> {
+  indicesOf(elem: Elem): Iter<number> {
     return this.indicesWhere(e => e === elem)
   }
 
@@ -605,8 +757,8 @@ export class Iter<T> implements Iterable<T> {
    * result: 'aQbWcQ'
    * ```
    */
-  interleave(...otherIterables: NonEmpty<Iterable<T>>): Iter<T> {
-    const zipped = (this.zip(...otherIterables) as unknown) as Iter<T[]>
+  interleave(...otherIterables: NonEmpty<Iterable<Elem>>): Iter<Elem> {
+    const zipped = (this.zip(...otherIterables) as unknown) as Iter<Elem[]>
     return iter.flatten(zipped)
   }
 
@@ -619,9 +771,9 @@ export class Iter<T> implements Iterable<T> {
    * result: 'aQbWcQba'
    * ```
    */
-  interleaveAll(...otherIterables: NonEmpty<Iterable<T>>): Iter<T> {
-    const zipped = (this.zipAll(...otherIterables) as unknown) as Iter<(T | undefined)[]>
-    return iter.flatten<T | undefined>(zipped).patchElem(undefined, 1) as Iter<T>
+  interleaveAll(...otherIterables: NonEmpty<Iterable<Elem>>): Iter<Elem> {
+    const zipped = (this.zipAll(...otherIterables) as unknown) as Iter<(Elem | undefined)[]>
+    return iter.flatten<Elem | undefined>(zipped).patchElem(undefined, 1) as Iter<Elem>
   }
 
   /**
@@ -633,10 +785,10 @@ export class Iter<T> implements Iterable<T> {
    * result: 'aQbWcQaWbQ'
    * ```
    */
-  interleaveRound(...otherIterables: NonEmpty<Iterable<T>>): Iter<T> {
-    const repeatedIterables = otherIterables.map(it => iter(it).repeat()) as NonEmpty<Iter<T>>
+  interleaveRound(...otherIterables: NonEmpty<Iterable<Elem>>): Iter<Elem> {
+    const repeatedIterables = otherIterables.map(it => iter(it).repeat()) as NonEmpty<Iter<Elem>>
 
-    const iterArrayT = (this.repeat().zip(...repeatedIterables) as unknown) as Iter<T[]>
+    const iterArrayT = (this.repeat().zip(...repeatedIterables) as unknown) as Iter<Elem[]>
 
     return iter.flatten(iterArrayT)
   }
@@ -671,22 +823,42 @@ export class Iter<T> implements Iterable<T> {
    * result: (1, 3, 1, 3, 1, ...)
    * ```
    */
-  repeat(times?: number): Iter<T> {
+  repeat(times?: number): Iter<Elem> {
     if (times !== undefined) {
-      if (times <= 0 || this.isEmptyInstance) return iter.empty
+      if (times <= 0) return iter.empty()
       if (times === 1) return this
     }
+    if (this.isEmptyInstance) return iter.empty()
 
-    return this.applyCustomOperation(function*(iterable) {
-      const iterator = getIterator(iterable)
-      const { value, done } = iterator.next()
+    return this.applyCustomOperation(iterable => {
+      let isDone = false
+      let nonEmpty = false
+      let remain = times
 
-      if (done) return
+      let iterator = getIterator(iterable)
 
-      yield value
-      yield* (iterator as any) as Iterable<T>
+      const reset = () => {
+        iterator = getIterator(iterable)
+        if (remain !== undefined) remain--
+      }
 
-      while (times === undefined || --times > 0) yield* iterable
+      return {
+        next(): IteratorResult<Elem> {
+          while (!isDone) {
+            const nextResult = iterator.next()
+            if (nextResult.done) {
+              if (!nonEmpty) return DONE
+              reset()
+              isDone = remain !== undefined && remain <= 0
+            } else {
+              nonEmpty = true
+              return nextResult
+            }
+          }
+
+          return DONE
+        }
+      }
     })
   }
 
@@ -698,7 +870,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (1, 5, 3, 2)
    * ```
    */
-  distinct(): Iter<T> {
+  distinct(): Iter<Elem> {
     return this.distinctBy(v => v)
   }
 
@@ -713,18 +885,32 @@ export class Iter<T> implements Iterable<T> {
    * result: ('bar', 'test')
    * ```
    */
-  distinctBy<K>(keyFun: (value: T, index: number) => K): Iter<T> {
-    if (this.isEmptyInstance) return iter.empty
+  distinctBy<K>(keyFun: (value: Elem, index: number) => K): Iter<Elem> {
+    if (this.isEmptyInstance) return iter.empty()
 
-    return this.applyCustomOperation(function*(iterable) {
+    return this.applyCustom(iterator => {
       const set = new Set<K>()
-
       let index = 0
-      for (const elem of iterable) {
-        const key = keyFun(elem, index)
-        if (!set.has(key)) {
-          set.add(key)
-          yield elem
+      let isDone = false
+
+      return {
+        next() {
+          while (!isDone) {
+            const nextResult = iterator.next()
+
+            isDone = nextResult.done
+
+            if (!isDone) {
+              const key = keyFun(nextResult.value, index++)
+
+              if (!set.has(key)) {
+                set.add(key)
+                return nextResult
+              }
+            }
+          }
+
+          return DONE
         }
       }
     })
@@ -735,15 +921,30 @@ export class Iter<T> implements Iterable<T> {
    * @param pred a function that take the current element, and the optional previous element and returns a boolean
    * indicating its filter status
    */
-  filterWithPrevious(pred: (current: T, previous?: T) => boolean): Iter<T> {
-    if (this.isEmptyInstance) return iter.empty
+  filterWithPrevious(pred: (current: Elem, previous?: Elem) => boolean): Iter<Elem> {
+    if (this.isEmptyInstance) return iter.empty()
 
-    return this.applyCustomOperation(function*(iterable) {
-      let last: T | undefined = undefined
+    return this.applyCustom(iterator => {
+      let isDone = false
+      let last: Elem
 
-      for (const elem of iterable) {
-        if (pred(elem, last)) yield elem
-        last = elem
+      return {
+        next() {
+          while (!isDone) {
+            const nextResult = iterator.next()
+
+            isDone = nextResult.done
+
+            if (!isDone) {
+              const shouldYield = pred(nextResult.value, last)
+              last = nextResult.value
+
+              if (shouldYield) return nextResult
+            }
+          }
+
+          return DONE
+        }
       }
     })
   }
@@ -756,7 +957,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (1, 3, 2, 5, 2, 3)
    * ```
    */
-  filterChanged(): Iter<T> {
+  filterChanged(): Iter<Elem> {
     return this.filterWithPrevious((current, last) => current !== last)
   }
 
@@ -776,11 +977,11 @@ export class Iter<T> implements Iterable<T> {
    * result: ([0, 1, 2], [1, 2, 3], [2, 3, 4], ...)
    * ```
    */
-  sliding(size: number, step = size): Iter<T[]> {
-    if (size <= 0 || step <= 0 || this.isEmptyInstance) return iter.empty
+  sliding(size: number, step = size): Iter<Elem[]> {
+    if (size <= 0 || step <= 0 || this.isEmptyInstance) return iter.empty()
 
     return this.applyCustomOperation(function*(iterable) {
-      let bucket: T[] = []
+      let bucket: Elem[] = []
 
       let toSkip = 0
 
@@ -808,7 +1009,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (0, 10, 20, 30, ...)
    * ```
    */
-  sample(nth: number): Iter<T> {
+  sample(nth: number): Iter<Elem> {
     return this.filter((_, index) => index % nth === 0)
   }
 
@@ -825,14 +1026,27 @@ export class Iter<T> implements Iterable<T> {
    * > nats[2]: 2
    * ```
    */
-  monitor(tag: string = '', effect: MonitorEffect<T> = defaultMonitorEffect): Iter<T> {
+  monitor(tag: string = '', effect: MonitorEffect<Elem> = defaultMonitorEffect): Iter<Elem> {
     if (this.isEmptyInstance) return this
 
-    return this.applyCustomOperation(function*(iterable) {
+    return this.applyCustom(iterator => {
       let index = 0
-      for (const elem of iterable) {
-        effect(elem, index++, tag)
-        yield elem
+      let isDone = false
+
+      return {
+        next() {
+          while (!isDone) {
+            const nextResult = iterator.next()
+            isDone = nextResult.done
+
+            if (!isDone) {
+              effect(nextResult.value, index++, tag)
+              return nextResult
+            }
+          }
+
+          return DONE
+        }
       }
     })
   }
@@ -846,26 +1060,40 @@ export class Iter<T> implements Iterable<T> {
    * result: ([4], [6], [8, 9, 10], [12], ...)
    * ```
    */
-  splitWhere(pred: Pred<T>): Iter<T[]> {
-    if (this.isEmptyInstance) return iter.empty
+  splitWhere(pred: Pred<Elem>): Iter<Elem[]> {
+    if (this.isEmptyInstance) return iter.empty()
 
-    return this.applyCustomOperation(function*(iterable) {
-      let bucket: T[] = []
-      let newBucket = false
+    return this.applyCustom(iterator => {
+      let bucket: Elem[] = []
+      let isDone = false
       let index = 0
 
-      for (const elem of iterable) {
-        if (pred(elem, index++)) {
-          yield bucket
-          bucket = []
-          newBucket = true
-        } else {
-          bucket.push(elem)
-          newBucket = false
+      return {
+        next() {
+          while (!isDone) {
+            const { value, done } = iterator.next()
+            isDone = done
+
+            if (isDone) {
+              return {
+                done: false,
+                value: bucket
+              }
+            }
+
+            const newBucket = pred(value, index++)
+
+            if (newBucket) {
+              const sendBucket = bucket
+              bucket = []
+              return { done: false, value: sendBucket }
+            } else {
+              bucket.push(value)
+            }
+          }
+          return DONE
         }
       }
-
-      if (newBucket || bucket.length > 0) yield bucket
     })
   }
   /**
@@ -877,7 +1105,7 @@ export class Iter<T> implements Iterable<T> {
    * result: (['a'], ['t', 'e', 's', 't'], [], ['f', 'o', 'o'])
    * ```
    */
-  splitOnElem(elem: T): Iter<T[]> {
+  splitOnElem(elem: Elem): Iter<Elem[]> {
     return this.splitWhere(e => e === elem)
   }
 
@@ -890,7 +1118,7 @@ export class Iter<T> implements Iterable<T> {
    * result: 'a|b|c'
    * ```
    */
-  intersperse(interIter: Iterable<T>): Iter<T> {
+  intersperse(interIter: Iterable<Elem>): Iter<Elem> {
     return this.patchWhere((_, i) => i > 0, 0, () => interIter)
   }
 
@@ -907,10 +1135,10 @@ export class Iter<T> implements Iterable<T> {
    * ```
    */
   mkGroup(
-    startIter: Iterable<T> = iter.empty,
-    sepIter: Iterable<T> = iter.empty,
-    endIter: Iterable<T> = iter.empty
-  ): Iter<T> {
+    startIter: Iterable<Elem> = iter.empty(),
+    sepIter: Iterable<Elem> = iter.empty(),
+    endIter: Iterable<Elem> = iter.empty()
+  ): Iter<Elem> {
     return iter(startIter).concat(this.intersperse(sepIter), endIter)
   }
 
@@ -944,11 +1172,11 @@ export class Iter<T> implements Iterable<T> {
    * ```
    */
   patchWhere(
-    pred: Pred<T>,
+    pred: Pred<Elem>,
     remove: number,
-    insert?: (elem: T, index: number) => Iterable<T>,
+    insert?: (elem: Elem, index: number) => Iterable<Elem>,
     amount?: number
-  ): Iter<T> {
+  ): Iter<Elem> {
     if (this.isEmptyInstance || (amount !== undefined && amount <= 0)) {
       return this
     }
@@ -994,15 +1222,15 @@ export class Iter<T> implements Iterable<T> {
    * result: ('aQWc')
    * ```
    */
-  patchAt(index: number, remove: number, insert?: (elem?: T) => Iterable<T>): Iter<T> {
+  patchAt(index: number, remove: number, insert?: (elem?: Elem) => Iterable<Elem>): Iter<Elem> {
     if (this.isEmptyInstance) {
-      if (insert === undefined) return iter.empty
+      if (insert === undefined) return iter.empty()
       return iter(insert())
     }
     return this.applyCustomOperation(function*(iterable) {
       let i = 0
       let skip = 0
-      function* ins(elem?: T) {
+      function* ins(elem?: Elem) {
         if (insert !== undefined) {
           const insertIterable = insert(elem)
           yield* checkPureIterable(insertIterable)
@@ -1040,7 +1268,7 @@ export class Iter<T> implements Iterable<T> {
    * result: 'a--c--a'
    * ```
    */
-  patchElem(elem: T, remove: number, insert?: Iterable<T>, amount?: number): Iter<T> {
+  patchElem(elem: Elem, remove: number, insert?: Iterable<Elem>, amount?: number): Iter<Elem> {
     return this.patchWhere(
       e => e === elem,
       remove,
@@ -1059,21 +1287,21 @@ export class Iter<T> implements Iterable<T> {
   /**
    * Returns an array with all the values in this Iter
    */
-  toArray(): T[] {
+  toArray(): Elem[] {
     return [...this]
   }
 
   /**
    * Returns a Set with all the unique values in this Iter
    */
-  toSet(): Set<T> {
+  toSet(): Set<Elem> {
     return new Set(this)
   }
 
   /**
    * Returns this Iter as an asynchronous AsyncIter instance
    */
-  toAsync(): AsyncIter<T> {
+  toAsync(): AsyncIter<Elem> {
     return AsyncIter.fromIterable(this)
   }
 }
@@ -1092,6 +1320,8 @@ export function iter<E>(iterable: Iterable<E>, ...iterables: Iterable<E>[]): Ite
 }
 
 export namespace iter {
+  const _empty: Iter<any> = Iter.fromIterable<any>([])
+
   /**
    * Returns an empty Iter instance.
    * @example
@@ -1100,7 +1330,9 @@ export namespace iter {
    * result: ()
    * ```
    */
-  export const empty: Iter<any> = Iter.fromIterable<any>([])
+  export function empty<T>(): Iter<T> {
+    return _empty
+  }
 
   /**
    * Returns an Iter instance yielding the given elements.
@@ -1157,18 +1389,18 @@ export namespace iter {
    * Returns an Iter yielding the object entries as tuples of type [string, any]
    * @param obj the source object
    */
-  export function objectEntries<V>(obj: { [key: string]: V }): Iter<[string, V]> {
-    return objectKeys(obj).map((p: string): [string, V] => [p, obj[p]])
+  export function objectEntries<T extends {}>(obj: T): Iter<[keyof T, T[keyof T]]> {
+    return objectKeys(obj).map((p: keyof T) => [p, obj[p]] as [keyof T, T[keyof T]])
   }
 
   /**
    * Returns an Iter yielding the object keys as strings
    * @param obj the source object
    */
-  export function objectKeys(obj: {}): Iter<string> {
+  export function objectKeys<T extends {}>(obj: T): Iter<keyof T> {
     return fromIterator(function*() {
       for (const prop in obj) {
-        if (obj.hasOwnProperty(prop)) yield prop
+        yield prop as keyof T
       }
     })
   }
@@ -1177,7 +1409,7 @@ export namespace iter {
    * Returns an Iter yielding the object values
    * @param obj the source object
    */
-  export function objectValues<V>(obj: { [key: string]: V }): Iter<V> {
+  export function objectValues<V>(obj: Record<any, V>): Iter<V> {
     return objectKeys(obj).map(p => obj[p])
   }
 
@@ -1207,14 +1439,21 @@ export namespace iter {
     init: E,
     next: (current: E, index: number) => E | undefined
   ): Iter<E> {
-    return fromIterator(function*() {
-      let value = init
+    return fromIterator(() => {
+      let curValue: E | undefined = init
       let index = 0
-      while (true) {
-        yield value
-        const result = next(value, index++)
-        if (result === undefined) return
-        value = result
+
+      return {
+        next(): IteratorResult<E> {
+          if (curValue === undefined) return DONE
+          const value = curValue
+          curValue = next(value, index++)
+
+          return {
+            done: false,
+            value
+          }
+        }
       }
     })
   }
@@ -1235,15 +1474,26 @@ export namespace iter {
     init: S,
     next: (currentState: S, index: number) => [E, S] | undefined
   ): Iter<E> {
-    return fromIterator(function*() {
+    return fromIterator(() => {
       let state = init
       let index = 0
-      while (true) {
-        const result = next(state, index++)
-        if (result === undefined) return
-        const [elem, newState] = result
-        state = newState
-        yield elem
+      let isDone = false
+
+      return {
+        next() {
+          while (!isDone) {
+            const nextYield = next(state, index++)
+
+            if (nextYield === undefined) {
+              isDone = true
+            } else {
+              const [value, newState] = nextYield
+              state = newState
+              return { done: false, value }
+            }
+          }
+          return DONE
+        }
       }
     })
   }
@@ -1259,8 +1509,18 @@ export namespace iter {
    * ```
    */
   export function fromLazy<E>(create: () => E): Iter<E> {
-    return fromIterator(function*() {
-      yield create()
+    return fromIterator(() => {
+      let isDone = false
+
+      return {
+        next() {
+          while (!isDone) {
+            isDone = true
+            return { done: false, value: create() }
+          }
+          return DONE
+        }
+      }
     })
   }
 
@@ -1296,10 +1556,16 @@ export namespace iter {
    * ```
    */
   export function range(from: number, until?: number, step = 1): Iter<number> {
-    const it = generate(from, v => v + step)
-    if (until === undefined) return it
-    if (step >= 0) return it.takeWhile(v => v < until)
-    return it.takeWhile(v => v > until)
+    return generate(from, v => {
+      const next = v + step
+
+      if (until !== undefined) {
+        if (step >= 0 && next >= until) return undefined
+        if (step <= 0 && next <= until) return undefined
+      }
+
+      return next
+    })
   }
 
   /**
@@ -1360,13 +1626,9 @@ export namespace iter {
    * ```
    */
   export function indexedReversed<E>(input: Indexed<E>): Iter<E> {
-    if (input.length === 0) return empty
+    if (input.length === 0) return empty()
 
-    return fromIterator(function*() {
-      let index = 0
-      let last = input.length - 1
-      while (index < input.length) yield input[last - index++]
-    })
+    return range(input.length - 1, -1, -1).map(index => input[index])
   }
 
   /**
@@ -1379,8 +1641,8 @@ export namespace iter {
    * result: ('a', 'b', 'c', 'b' )
    * ```
    */
-  export function indexedBounce<E>(input: Indexed<E>) {
-    if (input.length === 0) return empty
+  export function indexedBounce<E>(input: Indexed<E>): Iter<E> {
+    if (input.length === 0) return empty()
 
     return iter(input).concat(
       fromIterator(function*() {
@@ -1402,10 +1664,14 @@ export namespace iter {
    * ```
    */
   export function flatten<E>(iterable: Iterable<Iterable<E>>): Iter<E> {
-    if (iterable === empty) return empty
+    if (iterable === empty<Iterable<E>>()) return empty()
 
     return iter(iterable).flatMap(v => v)
   }
+
+  export const ops = opsCollectors
+
+  export const collector = Op
 }
 
 function toAnyIterator<X>(iterable: AnyIterable<X>): AnyIterator<X> {
@@ -1416,7 +1682,7 @@ function toAnyIterator<X>(iterable: AnyIterable<X>): AnyIterator<X> {
  * Enrichment class allowing for manipulation of asynchronous iterables.
  * @typeparam T the element type.
  */
-export class AsyncIter<T> implements AsyncIterable<T> {
+export class AsyncIter<Elem> implements AsyncIterable<Elem> {
   /**
    * Returns an AsyncIter yielding items from an iterable
    * @typeparam E The type of elements the Iterable yields.
@@ -1433,7 +1699,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
     return asyncIter.fromIterator(() => getAnyIterator(iterable))
   }
 
-  private constructor(private readonly iterable: AsyncIterable<T>) {
+  private constructor(private readonly iterable: AsyncIterable<Elem>) {
     if (iterable instanceof AsyncIter) {
       throw error(Errors.InternalError, 'unnecessary asynciter nesting')
     }
@@ -1444,7 +1710,13 @@ export class AsyncIter<T> implements AsyncIterable<T> {
   }
 
   private get isEmptyInstance() {
-    return this === asyncIter.empty
+    return this === asyncIter.empty()
+  }
+
+  private applyCustom<R>(
+    createIterator: (iterator: AsyncIterator<Elem>) => AsyncIterator<R>
+  ): AsyncIter<R> {
+    return asyncIter.fromIterator(() => createIterator(this[Symbol.asyncIterator]()))
   }
 
   /**
@@ -1464,7 +1736,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * ```
    */
   applyCustomOperation<R>(
-    createIterator: (iterable: AsyncIterable<T>) => AsyncIterator<R>
+    createIterator: (iterable: AsyncIterable<Elem>) => AsyncIterator<R>
   ): AsyncIter<R> {
     return asyncIter.fromIterator(() => createIterator(this))
   }
@@ -1472,7 +1744,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
   /**
    * AsyncIterable interface: When called, returns an AsyncIterator of type T
    */
-  [Symbol.asyncIterator](): AsyncIterator<T> {
+  [Symbol.asyncIterator](): AsyncIterator<Elem> {
     return getAsyncIterator(this.iterable)
   }
 
@@ -1486,14 +1758,14 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: 9
    * ```
    */
-  async collect<R>(collector: Collector<T, R>): Promise<R> {
+  async collect<Res>(collector: Op<Elem, Res>): Promise<Res> {
     let result = collector.createInitState()
     let index = 0
     if (optPred(result, index, collector.escape)) {
       return collector.stateToResult(result, index)
     }
 
-    for await (const elem of this as AsyncIterable<T>) {
+    for await (const elem of this as AsyncIterable<Elem>) {
       result = collector.nextState(result, elem, index++)
       if (optPred(result, index, collector.escape)) {
         return collector.stateToResult(result, index)
@@ -1512,7 +1784,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 4, 8)
    * ```
    */
-  collectIter<R>(collector: Collector<T, R>): AsyncIter<R> {
+  collectIter<Res>(collector: Op<Elem, Res>): AsyncIter<Res> {
     return this.applyCustomOperation(async function*(iterable) {
       let result = collector.createInitState()
       let index = 0
@@ -1531,14 +1803,14 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * Note: eagerly gets all values from the iterable.
    * @param effect a function taking an element of the Iter and optionally its index and performs some side-effect.
    */
-  async forEach(effect?: Effect<T>): Promise<void> {
+  async forEach(effect?: Effect<Elem>): Promise<void> {
     if (effect === undefined) {
-      for await (const elem of this as AsyncIterable<T>);
+      for await (const elem of this as AsyncIterable<Elem>);
       return
     }
 
     let index = 0
-    for await (const elem of this as AsyncIterable<T>) effect(elem, index++)
+    for await (const elem of this as AsyncIterable<Elem>) effect(elem, index++)
   }
 
   /**
@@ -1551,8 +1823,8 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 4, 7)
    * ```
    */
-  map<R>(mapFun: MapFun<T, R>): AsyncIter<R> {
-    if (this.isEmptyInstance) return asyncIter.empty
+  map<R>(mapFun: MapFun<Elem, R>): AsyncIter<R> {
+    if (this.isEmptyInstance) return asyncIter.empty()
 
     return this.applyCustomOperation(async function*(iterable) {
       let index = 0
@@ -1569,7 +1841,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (3, 7)
    * ```
    */
-  filter(pred: Pred<T>): AsyncIter<T> {
+  filter(pred: Pred<Elem>): AsyncIter<Elem> {
     return this.filterNot((v, i) => !pred(v, i))
   }
 
@@ -1582,7 +1854,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 3, 5, 7, ...)
    * ```
    */
-  filterNot(pred: Pred<T>): AsyncIter<T> {
+  filterNot(pred: Pred<Elem>): AsyncIter<Elem> {
     return this.patchWhere(pred, 1)
   }
 
@@ -1596,8 +1868,8 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 2, 2, 3, 3, 3)
    * ```
    */
-  flatMap<R>(flatMapFun: (elem: T, index: number) => AnyIterable<R>): AsyncIter<R> {
-    if (this.isEmptyInstance) return asyncIter.empty
+  flatMap<R>(flatMapFun: (elem: Elem, index: number) => AnyIterable<R>): AsyncIter<R> {
+    if (this.isEmptyInstance) return asyncIter.empty()
 
     return this.applyCustomOperation(async function*(iterable) {
       let index = 0
@@ -1616,10 +1888,10 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (2, 4, 5, 3, 1, 2, 3, ...)
    * ```
    */
-  concat(...otherIterables: NonEmpty<AnyIterable<T>>): AsyncIter<T> {
+  concat(...otherIterables: NonEmpty<AnyIterable<Elem>>): AsyncIter<Elem> {
     return iter
-      .of<AnyIterable<T>>(this, ...otherIterables)
-      .filter(it => it !== asyncIter.empty && it !== iter.empty)
+      .of<AnyIterable<Elem>>(this, ...otherIterables)
+      .filter(it => it !== asyncIter.empty<Elem>() && it !== iter.empty<Elem>())
       .toAsync()
       .flatMap(it => checkPureAnyIterable(it))
   }
@@ -1633,7 +1905,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 3, 5, 6, 7)
    * ```
    */
-  append(...elems: NonEmpty<T>): AsyncIter<T> {
+  append(...elems: NonEmpty<Elem>): AsyncIter<Elem> {
     return this.concat(elems)
   }
 
@@ -1646,7 +1918,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (6, 7, 1, 3, 5)
    * ```
    */
-  prepend(...elems: NonEmpty<T>): AsyncIter<T> {
+  prepend(...elems: NonEmpty<Elem>): AsyncIter<Elem> {
     return AsyncIter.fromIterable(elems).concat(this)
   }
 
@@ -1659,7 +1931,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (3)
    * ```
    */
-  drop(amount: number): AsyncIter<T> {
+  drop(amount: number): AsyncIter<Elem> {
     return this.patchAt(0, amount)
   }
 
@@ -1671,16 +1943,16 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (0, 1, 2, 3, 4)
    * ```
    */
-  dropLast(amount: number): AsyncIter<T> {
+  dropLast(amount: number): AsyncIter<Elem> {
     if (amount <= 0) return this
     if (this.isEmptyInstance) return this
 
     return this.applyCustomOperation(async function*(iterable) {
-      const buffer: T[] = []
+      const buffer: Elem[] = []
 
       for await (const elem of iterable) {
         buffer.push(elem)
-        if (buffer.length > amount) yield buffer.shift() as T
+        if (buffer.length > amount) yield buffer.shift() as Elem
       }
     })
   }
@@ -1694,8 +1966,8 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 2)
    * ```
    */
-  take(amount: number): AsyncIter<T> {
-    if (amount <= 0 || this.isEmptyInstance) return asyncIter.empty
+  take(amount: number): AsyncIter<Elem> {
+    if (amount <= 0 || this.isEmptyInstance) return asyncIter.empty()
 
     return this.applyCustomOperation(async function*(iterable) {
       let toTake = amount
@@ -1715,12 +1987,12 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (7, 8, 9)
    * ```
    */
-  takeLast(amount: number): AsyncIter<T> {
-    if (amount <= 0) return asyncIter.empty
+  takeLast(amount: number): AsyncIter<Elem> {
+    if (amount <= 0) return asyncIter.empty()
     if (this.isEmptyInstance) return this
 
     return this.applyCustomOperation(async function*(iterable) {
-      const buffer: T[] = []
+      const buffer: Elem[] = []
 
       for await (const elem of iterable) {
         buffer.push(elem)
@@ -1740,7 +2012,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (2, 3)
    * ```
    */
-  slice(from: number, amount: number): AsyncIter<T> {
+  slice(from: number, amount: number): AsyncIter<Elem> {
     return this.drop(from).take(amount)
   }
 
@@ -1753,7 +2025,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 2)
    * ```
    */
-  takeWhile(pred: Pred<T>): AsyncIter<T> {
+  takeWhile(pred: Pred<Elem>): AsyncIter<Elem> {
     return this.applyCustomOperation(async function*(iterable) {
       let index = 0
 
@@ -1773,11 +2045,11 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (2, 3)
    * ```
    */
-  dropWhile(pred: Pred<T>): AsyncIter<T> {
-    if (this.isEmptyInstance) return asyncIter.empty
+  dropWhile(pred: Pred<Elem>): AsyncIter<Elem> {
+    if (this.isEmptyInstance) return asyncIter.empty()
 
     return this.applyCustomOperation(async function*(iterable) {
-      const iterator = (getAsyncIterator(iterable) as any) as AsyncIterable<T>
+      const iterator = (getAsyncIterator(iterable) as any) as AsyncIterable<Elem>
       let index = 0
 
       for await (const elem of iterator) {
@@ -1802,11 +2074,11 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: 6
    * ```
    */
-  async reduce(op: MonoFun<T>, otherwise?: OptLazy<T>): Promise<T> {
-    let result: T | NoValue = NoValue
+  async reduce(op: ReduceFun<Elem>, otherwise?: OptLazy<Elem>): Promise<Elem> {
+    let result: Elem | NoValue = NoValue
 
     let index = 0
-    for await (const elem of this as AsyncIterable<T>) {
+    for await (const elem of this as AsyncIterable<Elem>) {
       if (result === NoValue) result = elem
       else result = op(result, elem, index++)
     }
@@ -1833,30 +2105,24 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (6, 4)
    * ```
    */
-  zipWith<O, R>(
-    zipFun: (t: T, o: O, ...others: any[]) => R,
-    other1Iterable: AnyIterable<O>,
-    ...otherIterables: AnyIterable<any>[]
+  zipWith<O extends NonEmpty<any>, R>(
+    zipFun: (t: Elem, ...others: O) => R,
+    ...otherIterables: ZipAnyIters<O>
   ): AsyncIter<R> {
-    if (this.isEmptyInstance) return asyncIter.empty
-    if (
-      [other1Iterable, ...otherIterables].some(it => it === iter.empty || it === asyncIter.empty)
-    ) {
-      return asyncIter.empty
+    if (this.isEmptyInstance) return asyncIter.empty()
+    if (otherIterables.some(it => it === asyncIter.empty() || it === asyncIter.empty())) {
+      return asyncIter.empty()
     }
 
     return this.applyCustomOperation(async function*(iterable) {
-      const iterators = [
-        toAnyIterator(iterable),
-        toAnyIterator(other1Iterable),
-        ...otherIterables.map(toAnyIterator)
-      ]
+      const iterators = [toAnyIterator(iterable), ...otherIterables.map(toAnyIterator)]
 
       while (true) {
         const results = await Promise.all(iterators.map(it => it.next()))
         if (results.some(r => r.done)) return
-        const values = results.map(r => r.value)
-        const zipOpt = zipFun(...(values as [T, O, ...any[]]))
+        const values: any = results.map(r => r.value)
+        const [first, ...rest] = values
+        const zipOpt = zipFun(first, ...rest)
         yield zipOpt
       }
     })
@@ -1874,12 +2140,10 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: ([0, 0], [5, 1])
    * ```
    */
-  zip<O>(
-    otherIterable1: AnyIterable<O>,
-    ...otherIterables: AnyIterable<any>[]
-  ): AsyncIter<[T, O, ...any[]]> {
-    const toTuple = (t: T, o: O, ...other: any[]): [T, O, ...any[]] => [t, o, ...other]
-    return this.zipWith(toTuple, otherIterable1, ...otherIterables)
+  zip<O extends NonEmpty<any>>(...otherIterables: ZipAnyIters<O>): AsyncIter<Unshift<O, Elem>> {
+    const toTuple = (arg: Elem, ...args: O): Unshift<O, Elem> => [arg, ...args] as any
+
+    return this.zipWith(toTuple, ...(otherIterables as any))
   }
 
   /**
@@ -1890,8 +2154,8 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (['a', 0], ['a', 1], ['a', 2])
    * ```
    */
-  zipWithIndex(): AsyncIter<[T, number]> {
-    return this.map((e, i): [T, number] => [e, i])
+  zipWithIndex(): AsyncIter<[Elem, number]> {
+    return this.map((e, i): [Elem, number] => [e, i])
   }
 
   /**
@@ -1909,24 +2173,35 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: ([5, 0], [7, 2], [undefined, 3])
    * ```
    */
-  zipAllWith<O, R>(
-    zipFun: (t?: T, o?: O, ...other: any[]) => R,
-    other1Iterable: AnyIterable<O>,
-    ...otherIterables: AnyIterable<any>[]
+  zipAllWith<O extends NonEmpty<any>, R>(
+    zipFun: (t?: Elem, ...others: OptList<O>) => R,
+    ...otherIterables: ZipAnyIters<O>
   ): AsyncIter<R> {
-    return this.applyCustomOperation(async function*(iterable) {
-      const iterators = [
-        toAnyIterator(iterable),
-        toAnyIterator(other1Iterable),
-        ...otherIterables.map(toAnyIterator)
-      ]
+    return this.applyCustom(iterator => {
+      const otherIterators = otherIterables.map(toAnyIterator)
+      let allDone = false
 
-      while (true) {
-        const results = await Promise.all(iterators.map(it => it.next()))
-        if (results.every(r => r.done)) return
-        const values = results.map(r => (r.done ? undefined : r.value))
-        const zipOpt = zipFun(...values)
-        yield zipOpt
+      return {
+        async next(): Promise<IteratorResult<R>> {
+          if (allDone) return DONE
+          const values: any[] = []
+
+          const { value, done } = await iterator.next()
+          allDone = done
+          values.push(done ? undefined : value)
+
+          for (const otherIterator of otherIterators) {
+            const { value, done } = await otherIterator.next()
+            allDone = allDone && done
+            values.push(done ? undefined : value)
+          }
+
+          if (allDone) return DONE
+          return {
+            done: false,
+            value: zipFun(...(values as any))
+          }
+        }
       }
     })
   }
@@ -1944,13 +2219,12 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: ([1, 'a'], [5, 'c'], [6, undefined])
    * ```
    */
-  zipAll<O>(
-    otherIterable1: AnyIterable<O>,
-    ...otherIterables: AnyIterable<any>[]
-  ): AsyncIter<[T?, O?, ...any[]]> {
-    const toTuple = (t?: T, o?: O, ...other: any[]): [T?, O?, ...any[]] => [t, o, ...other]
+  zipAll<O extends NonEmpty<any>>(
+    ...otherIterables: ZipAnyIters<O>
+  ): AsyncIter<OptList<Unshift<O, Elem>>> {
+    const toTuple: any = (...args: any[]) => args
 
-    return this.zipAllWith(toTuple, otherIterable1, ...otherIterables)
+    return this.zipAllWith(toTuple, ...(otherIterables as any))
   }
 
   /**
@@ -1962,7 +2236,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 3, 4)
    * ```
    */
-  indicesWhere(pred: Pred<T>): AsyncIter<number> {
+  indicesWhere(pred: Pred<Elem>): AsyncIter<number> {
     return this.zipWithIndex()
       .filter(([elem, index]) => pred(elem, index))
       .map(([_, index]) => index)
@@ -1977,7 +2251,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (0, 2, 5)
    * ```
    */
-  indicesOf(elem: T): AsyncIter<number> {
+  indicesOf(elem: Elem): AsyncIter<number> {
     return this.indicesWhere(e => e === elem)
   }
 
@@ -1990,7 +2264,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: 'aQbWcQ'
    * ```
    */
-  interleave(...otherIterables: [AnyIterable<T>, ...AnyIterable<T>[]]): AsyncIter<T> {
+  interleave(...otherIterables: [AnyIterable<Elem>, ...AnyIterable<Elem>[]]): AsyncIter<Elem> {
     return asyncIter.flatten(this.zip(...otherIterables))
   }
 
@@ -2003,10 +2277,10 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: 'aQbWcQba'
    * ```
    */
-  interleaveAll(...otherIterables: NonEmpty<AnyIterable<T>>): AsyncIter<T> {
+  interleaveAll(...otherIterables: NonEmpty<AnyIterable<Elem>>): AsyncIter<Elem> {
     return asyncIter
-      .flatten<T | undefined>(this.zipAll(...otherIterables))
-      .patchElem(undefined, 1) as AsyncIter<T>
+      .flatten<Elem | undefined>(this.zipAll(...otherIterables))
+      .patchElem(undefined, 1) as AsyncIter<Elem>
   }
 
   /**
@@ -2018,9 +2292,9 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: 'aQbWcQaWbQ'
    * ```
    */
-  interleaveRound(...otherIterables: NonEmpty<AnyIterable<T>>): AsyncIter<T> {
+  interleaveRound(...otherIterables: NonEmpty<AnyIterable<Elem>>): AsyncIter<Elem> {
     const its = otherIterables.map(it => AsyncIter.fromIterable(it).repeat()) as NonEmpty<
-      AsyncIter<T>
+      AsyncIter<Elem>
     >
 
     return asyncIter.flatten(this.repeat().zip(...its))
@@ -2062,9 +2336,9 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 3, 1, 3, 1, ...)
    * ```
    */
-  repeat(times?: number): AsyncIter<T> {
+  repeat(times?: number): AsyncIter<Elem> {
     if (times !== undefined) {
-      if (times <= 0 || this.isEmptyInstance) return asyncIter.empty
+      if (times <= 0 || this.isEmptyInstance) return asyncIter.empty()
       if (times === 1) return this
     }
 
@@ -2075,7 +2349,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
       if (done) return
 
       yield value
-      yield* (iterator as any) as AsyncIterable<T>
+      yield* (iterator as any) as AsyncIterable<Elem>
 
       while (times === undefined || --times > 0) yield* iterable
     })
@@ -2089,7 +2363,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 5, 3, 2)
    * ```
    */
-  distinct(): AsyncIter<T> {
+  distinct(): AsyncIter<Elem> {
     return this.distinctBy(v => v)
   }
 
@@ -2104,8 +2378,8 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: ('bar', 'test')
    * ```
    */
-  distinctBy<K>(keyFun: (value: T, index: number) => K): AsyncIter<T> {
-    if (this.isEmptyInstance) return asyncIter.empty
+  distinctBy<K>(keyFun: (value: Elem, index: number) => K): AsyncIter<Elem> {
+    if (this.isEmptyInstance) return asyncIter.empty()
 
     return this.applyCustomOperation(async function*(iterable) {
       const set = new Set<K>()
@@ -2126,11 +2400,11 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * @param pred a function that take the current element, and the optional previous element and returns a boolean
    * indicating its filter status
    */
-  filterWithPrevious(pred: (current: T, previous?: T) => boolean): AsyncIter<T> {
-    if (this.isEmptyInstance) return asyncIter.empty
+  filterWithPrevious(pred: (current: Elem, previous?: Elem) => boolean): AsyncIter<Elem> {
+    if (this.isEmptyInstance) return asyncIter.empty()
 
     return this.applyCustomOperation(async function*(iterable) {
-      let last: T | undefined = undefined
+      let last: Elem | undefined = undefined
 
       for await (const elem of iterable) {
         if (pred(elem, last)) yield elem
@@ -2147,7 +2421,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (1, 3, 2, 5, 2, 3)
    * ```
    */
-  filterChanged(): AsyncIter<T> {
+  filterChanged(): AsyncIter<Elem> {
     return this.filterWithPrevious((current, last) => current !== last)
   }
 
@@ -2167,11 +2441,11 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: ([0, 1, 2], [1, 2, 3], [2, 3, 4], ...)
    * ```
    */
-  sliding(size: number, step = size): AsyncIter<T[]> {
-    if (size <= 0 || step <= 0 || this.isEmptyInstance) return asyncIter.empty
+  sliding(size: number, step = size): AsyncIter<Elem[]> {
+    if (size <= 0 || step <= 0 || this.isEmptyInstance) return asyncIter.empty()
 
     return this.applyCustomOperation(async function*(iterable) {
-      let bucket: T[] = []
+      let bucket: Elem[] = []
 
       let toSkip = 0
 
@@ -2199,7 +2473,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (0, 10, 20, 30, ...)
    * ```
    */
-  sample(nth: number): AsyncIter<T> {
+  sample(nth: number): AsyncIter<Elem> {
     return this.patchWhere((_, i) => i % nth === 0, nth, e => iter.of(e))
   }
 
@@ -2215,7 +2489,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * > nats[2]: 2
    * ```
    */
-  monitor(tag: string = '', effect: MonitorEffect<T> = defaultMonitorEffect): AsyncIter<T> {
+  monitor(tag: string = '', effect: MonitorEffect<Elem> = defaultMonitorEffect): AsyncIter<Elem> {
     if (this.isEmptyInstance) return this
 
     return this.applyCustomOperation(async function*(iterable) {
@@ -2236,11 +2510,11 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: ([4], [6], [8, 9, 10])
    * ```
    */
-  splitWhere(pred: Pred<T>): AsyncIter<T[]> {
-    if (this.isEmptyInstance) return asyncIter.empty
+  splitWhere(pred: Pred<Elem>): AsyncIter<Elem[]> {
+    if (this.isEmptyInstance) return asyncIter.empty()
 
     return this.applyCustomOperation(async function*(iterable) {
-      let bucket: T[] = []
+      let bucket: Elem[] = []
       let newBucket = false
       let index = 0
 
@@ -2268,7 +2542,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: (['a'], ['t', 'e', 's', 't'], [], ['f', 'o', 'o'])
    * ```
    */
-  splitOnElem(elem: T): AsyncIter<T[]> {
+  splitOnElem(elem: Elem): AsyncIter<Elem[]> {
     return this.splitWhere(e => e === elem)
   }
 
@@ -2281,7 +2555,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: 'a|b|c'
    * ```
    */
-  intersperse(interIter: AnyIterable<T>): AsyncIter<T> {
+  intersperse(interIter: AnyIterable<Elem>): AsyncIter<Elem> {
     return this.patchWhere((_, i) => i > 0, 0, () => interIter)
   }
 
@@ -2298,10 +2572,10 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * ```
    */
   mkGroup(
-    startIter: AnyIterable<T> = asyncIter.empty,
-    sepIter: AnyIterable<T> = asyncIter.empty,
-    endIter: AnyIterable<T> = asyncIter.empty
-  ): AsyncIter<T> {
+    startIter: AnyIterable<Elem> = asyncIter.empty(),
+    sepIter: AnyIterable<Elem> = asyncIter.empty(),
+    endIter: AnyIterable<Elem> = asyncIter.empty()
+  ): AsyncIter<Elem> {
     return AsyncIter.fromIterable(startIter).concat(this.intersperse(sepIter), endIter)
   }
 
@@ -2335,11 +2609,11 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * ```
    */
   patchWhere(
-    pred: Pred<T>,
+    pred: Pred<Elem>,
     remove: number,
-    insert?: (elem: T, index: number) => AnyIterable<T>,
+    insert?: (elem: Elem, index: number) => AnyIterable<Elem>,
     amount?: number
-  ): AsyncIter<T> {
+  ): AsyncIter<Elem> {
     if (this.isEmptyInstance || (amount !== undefined && amount <= 0)) {
       return this
     }
@@ -2384,9 +2658,13 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: 'aQWc'
    * ```
    */
-  patchAt(index: number, remove: number, insert?: (elem?: T) => AnyIterable<T>): AsyncIter<T> {
+  patchAt(
+    index: number,
+    remove: number,
+    insert?: (elem?: Elem) => AnyIterable<Elem>
+  ): AsyncIter<Elem> {
     if (this.isEmptyInstance) {
-      if (insert === undefined) return asyncIter.empty
+      if (insert === undefined) return asyncIter.empty()
       return AsyncIter.fromIterable(insert())
     }
 
@@ -2394,7 +2672,7 @@ export class AsyncIter<T> implements AsyncIterable<T> {
       let i = 0
       let skip = 0
 
-      async function* ins(elem?: T) {
+      async function* ins(elem?: Elem) {
         if (insert !== undefined) {
           const insertIterable = insert(elem)
           yield* checkPureAnyIterable(insertIterable)
@@ -2433,7 +2711,12 @@ export class AsyncIter<T> implements AsyncIterable<T> {
    * result: ('a--c--a')
    * ```
    */
-  patchElem(elem: T, remove: number, insert?: AnyIterable<T>, amount?: number): AsyncIter<T> {
+  patchElem(
+    elem: Elem,
+    remove: number,
+    insert?: AnyIterable<Elem>,
+    amount?: number
+  ): AsyncIter<Elem> {
     return this.patchWhere(
       e => e === elem,
       remove,
@@ -2493,6 +2776,8 @@ export namespace asyncIter {
     })
   }
 
+  const _empty: AsyncIter<any> = iter.empty().toAsync()
+
   /**
    * Returns an empty AsyncIter instance.
    * @example
@@ -2501,7 +2786,9 @@ export namespace asyncIter {
    * result: ()
    * ```
    */
-  export const empty: AsyncIter<any> = iter.empty.toAsync()
+  export function empty<T>(): AsyncIter<T> {
+    return _empty
+  }
 
   /**
    * Returns an AsyncIter yielding a potentially infinite sequence of elements using a generation function
@@ -2614,4 +2901,8 @@ export namespace asyncIter {
   ): AsyncIter<E> {
     return fromPromise(new Promise<E>(resolve => consume((...values: E) => resolve(values))))
   }
+
+  export const ops = opsCollectors
+
+  export const collector = Op
 }

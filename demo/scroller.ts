@@ -4,11 +4,11 @@
  * all options are optional
  */
 
-import { Collectors, iter } from '..'
+import iter from '../src/lib/public/iternal'
 
 // Process command line arguments
 
-if (iter(process.argv).collect(Collectors.containsAny('-h', '-?', '-help'))) {
+if (iter(process.argv).collect(iter.ops.containsAny('-h', '-?', '-help'))) {
   console.log(
     `\
 Usage from command line:
@@ -23,7 +23,7 @@ const { chars = ' X', width = 80, shift = 10, delay = 30 } = iter(process.argv)
   .drop(2)
   .sliding(2)
   .map(([opt, value]): [string, string] => [opt.slice(1), value])
-  .collect(Collectors.toObject())
+  .collect(iter.ops.toObject())
 
 // Draw patterns
 

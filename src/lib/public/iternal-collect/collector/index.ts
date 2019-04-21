@@ -10,19 +10,7 @@ import { MapFun, MonitorEffect, NonEmpty, OptLazy, Pred, ReduceFun, Lazy } from 
  * @typeparam A the input element type
  * @typeparam R the result type
  */
-export interface Collector<A, R> extends StateCollector<A, any, R> {}
-
-/**
- * A Reduce function that has the same input and output type
- * @typeparam A the input and result type
- */
-export type MonoFun<A> = ReduceFun<A, A>
-
-/**
- * A Collector that has the same input and result type
- * @typeparam A the input and result type
- */
-export interface MonoCollector<A> extends Collector<A, A> {}
+export interface Op<A, R = A, S = any> extends StateOp<A, S, R> {}
 
 function id(v: any) {
   return v
@@ -40,7 +28,7 @@ const defaultMonitorEffect: MonitorEffect<[any, any]> = (
   console.log(`${tag || ''}[${index}]: input:${values[0]} prevState:${values[1]}`)
 }
 
-export namespace Collector {
+export namespace Op {
   /**
    * Creates a new Collector object from element type A to result type R
    * @typeparam A the input element type
@@ -50,28 +38,12 @@ export namespace Collector {
    *   - `nextState`: a function taking the current state R and the next element A and returns the next state R
    *   - `escape?`: a predicate over a state R indicating whether its value can still ever change
    */
-  export function create<A, R>(definition: {
+  export function create<A, R = A>(definition: {
     init: OptLazy<R>
     next: ReduceFun<A, R>
     escape?: Pred<R>
-  }): Collector<A, R> {
+  }): Op<A, R> {
     return createState({ ...definition, stateToResult: id })
-  }
-
-  /**
-   * Creates a new monoid-like MonoCollector object taking and generating elements of type A
-   * @typeparam A the input and output element type
-   * @param definition the definition of the collector, containing:
-   *   - `init`: the initial state of the Collector, optionally lazy
-   *   - `next`: a function taking the current state A and the next element A and returns the next state A
-   *   - `escape?`: a predicate over a state A indicating whether its value can still ever change
-   */
-  export function createMono<A>(definition: {
-    init: OptLazy<A>
-    next: MonoFun<A>
-    escape?: Pred<A>
-  }): MonoCollector<A> {
-    return create(definition)
   }
 
   export function createState<A, S, R>(definition: {
@@ -79,16 +51,16 @@ export namespace Collector {
     next: ReduceFun<A, S>
     stateToResult: (state: S, size: number) => R
     escape?: Pred<S>
-  }): StateCollector<A, S, R> {
-    return StateCollector.create(definition)
+  }): StateOp<A, S, R> {
+    return StateOp.create(definition)
   }
 
-  export function fixed<R>(result: R): Collector<any, R> {
+  export function fixed<R>(result: R): Op<any, R> {
     return create({ init: result, next: () => result, escape: alwaysTrue })
   }
 
-  export type MapCollector<A, CS extends [any, any, ...any[]]> = Collector<A, any>[] &
-    { [K in keyof CS]: Collector<A, CS[K]> }
+  export type MapOp<A, CS extends [any, any, ...any[]]> = Op<A, any>[] &
+    { [K in keyof CS]: Op<A, CS[K]> }
 
   /**
    * Returns a Collector where the provided GenCollectors are run in parallel.
@@ -98,23 +70,23 @@ export namespace Collector {
    * @typeparam CR a tuple corresponding to the output types of the input collectors
    * @typeparam GR the result type of the `combineFun` function
    * @param combineFun a function that takes the tupled output of all provided collectors, and combines them into one result value
-   * @param collectors a number of Collectors taking the same type of elements as input
+   * @param ops a number of Collectors taking the same type of elements as input
    */
   export function combineWith<A, CR extends [unknown, unknown, ...unknown[]], GR>(
     combineFun: (...results: CR) => GR,
-    ...collectors: MapCollector<A, CR>
-  ): Collector<A, GR> {
+    ...ops: MapOp<A, CR>
+  ): Op<A, GR> {
     return createState<A, CR, GR>({
-      init: () => collectors.map(col => col.createInitState()) as CR,
+      init: () => ops.map(col => col.createInitState()) as CR,
       next: (states, elem, index) => {
-        return states.map((state, i) => collectors[i].nextState(state, elem, index)) as CR
+        return states.map((state, i) => ops[i].nextState(state, elem, index)) as CR
       },
       stateToResult: (states, size) => {
-        const results = states.map((state, i) => collectors[i].stateToResult(state, size))
+        const results = states.map((state, i) => ops[i].stateToResult(state, size))
         return combineFun(...(results as CR))
       },
       escape: (states, index) => {
-        return states.every((state, i) => optPred(state, index, collectors[i].escape))
+        return states.every((state, i) => optPred(state, index, ops[i].escape))
       }
     })
   }
@@ -124,12 +96,12 @@ export namespace Collector {
    * The results are collected into an array.
    * @typeparam A the input element type
    * @typeparam CR a tuple corresponding to the output types of the input collectors
-   * @param collectors a number of Collectors taking the same type of elements as input
+   * @param ops a number of Collectors taking the same type of elements as input
    */
   export function combine<A, CR extends [unknown, unknown, ...unknown[]]>(
-    ...collectors: MapCollector<A, CR>
-  ): Collector<A, CR> {
-    return combineWith<A, CR, CR>((...results) => results, ...(collectors as any))
+    ...ops: MapOp<A, CR>
+  ): Op<A, CR> {
+    return combineWith<A, CR, CR>((...results) => results, ...(ops as any))
   }
 
   /**
@@ -138,33 +110,29 @@ export namespace Collector {
    * @typeparam A the input element type
    * @typeparam R the result type of `col1`
    * @typeparam R2 the result type of `col2`
-   * @param col1 the collector that receives the input
-   * @param col2 the collector that produces the output
+   * @param op1 the collector that receives the input
+   * @param op2 the collector that produces the output
    */
-  export function pipe<A, R, R2>(col1: Collector<A, R>, col2: Collector<R, R2>): Collector<A, R2> {
+  export function pipe<A, R, R2>(op1: Op<A, R>, op2: Op<R, R2>): Op<A, R2> {
     return createState({
       init: () => ({
-        state1: col1.createInitState(),
-        state2: col2.createInitState()
+        state1: op1.createInitState(),
+        state2: op2.createInitState()
       }),
       next: (states, elem, index) => {
-        states.state1 = col1.nextState(states.state1, elem, index)
-        states.state2 = col2.nextState(
-          states.state2,
-          col1.stateToResult(states.state1, index),
-          index
-        )
+        states.state1 = op1.nextState(states.state1, elem, index)
+        states.state2 = op2.nextState(states.state2, op1.stateToResult(states.state1, index), index)
         return states
       },
-      stateToResult: ({ state2 }, index) => col2.stateToResult(state2, index),
+      stateToResult: ({ state2 }, index) => op2.stateToResult(state2, index),
       escape: ({ state1, state2 }, index) =>
-        (col1.escape !== undefined && col1.escape(state1, index)) ||
-        (col2.escape !== undefined && col2.escape(state2, index))
+        (op1.escape !== undefined && op1.escape(state1, index)) ||
+        (op2.escape !== undefined && op2.escape(state2, index))
     })
   }
 }
 
-export type StateCollectorDefinition<A, S, R> = {
+export type StateOpDefinition<A, S, R> = {
   createInitState: Lazy<S>
   nextState: ReduceFun<A, S>
   stateToResult: (state: S, size: number) => R
@@ -178,7 +146,7 @@ export type StateCollectorDefinition<A, S, R> = {
  * @typeparam S the intermediate state type
  * @typeparam R the output value type
  */
-export class StateCollector<A, S, R> {
+export class StateOp<Elem, St, Res> {
   /**
    * Creates a new Collector object from element type A to result type R
    * @typeparam A the input element type
@@ -190,13 +158,13 @@ export class StateCollector<A, S, R> {
    *   - `stateToResult`: a function that takes a state S and maps it to a result R
    *   - `escape?`: a predicate over a state S indicating whether its value can still ever change
    */
-  static create<A, S, R>(definition: {
-    init: OptLazy<S>
-    next: ReduceFun<A, S>
-    stateToResult: (state: S, size: number) => R
-    escape?: Pred<S>
-  }): StateCollector<A, S, R> {
-    return new StateCollector({
+  static create<Elem, St, Res>(definition: {
+    init: OptLazy<St>
+    next: ReduceFun<Elem, St>
+    stateToResult: (state: St, size: number) => Res
+    escape?: Pred<St>
+  }): StateOp<Elem, St, Res> {
+    return new StateOp({
       createInitState: OptLazy.toLazy(definition.init),
       nextState: definition.next,
       stateToResult: definition.stateToResult,
@@ -211,7 +179,7 @@ export class StateCollector<A, S, R> {
    * @param stateToResult a function that maps a state S to an output value R
    * @param escape an optional function indicating that the output value will never change no matter what input is offered further
    */
-  private constructor(private readonly definition: StateCollectorDefinition<A, S, R>) {}
+  private constructor(private readonly definition: StateOpDefinition<Elem, St, Res>) {}
 
   get createInitState() {
     return this.definition.createInitState
@@ -233,9 +201,9 @@ export class StateCollector<A, S, R> {
    */
   monitorInput(
     tag: string = '',
-    effect: MonitorEffect<[A, S]> = defaultMonitorEffect
-  ): Collector<A, R> {
-    return new StateCollector({
+    effect: MonitorEffect<[Elem, St]> = defaultMonitorEffect
+  ): Op<Elem, Res> {
+    return new StateOp({
       ...this.definition,
       nextState: (state, elem, index) => {
         effect([elem, state], index, tag)
@@ -249,8 +217,8 @@ export class StateCollector<A, S, R> {
    * @typeparam R2 the new output type
    * @param mapFun a function from current output type R to new output type R2
    */
-  mapResult<R2>(mapFun: (result: R) => R2): Collector<A, R2> {
-    return new StateCollector({
+  mapResult<R2>(mapFun: (result: Res) => R2): Op<Elem, R2> {
+    return new StateOp({
       ...this.definition,
       stateToResult: (result, size) => mapFun(this.stateToResult(result, size))
     })
@@ -260,8 +228,8 @@ export class StateCollector<A, S, R> {
    * Returns a Collector where the given `elems` are prepended to the input further received.
    * @param elems the elements to prepent
    */
-  prependInput(...elems: NonEmpty<A>): Collector<A, R> {
-    return new StateCollector({
+  prependInput(...elems: NonEmpty<Elem>): Op<Elem, Res> {
+    return new StateOp({
       ...this.definition,
       createInitState: () => {
         let state = this.createInitState()
@@ -282,8 +250,8 @@ export class StateCollector<A, S, R> {
    * multiple times can give unpredictable results.
    * @param elems the elements to prepent
    */
-  appendInput(...elems: NonEmpty<A>): Collector<A, R> {
-    return new StateCollector({
+  appendInput(...elems: NonEmpty<Elem>): Op<Elem, Res> {
+    return new StateOp({
       ...this.definition,
       stateToResult: (state, size) => {
         let rState = state
@@ -301,8 +269,8 @@ export class StateCollector<A, S, R> {
    * Returns a Collector where the input is filtered according to the given `pred` predicate.
    * @param pred a predicate over input elements
    */
-  filterInput(pred: Pred<A>): Collector<A, R> {
-    return Collector.createState({
+  filterInput(pred: Pred<Elem>): Op<Elem, Res> {
+    return Op.createState({
       init: () => ({ state: this.createInitState(), virtualIndex: 0 }),
       next: (combinedState, elem, index) => {
         if (pred(elem, index)) {
@@ -325,22 +293,22 @@ export class StateCollector<A, S, R> {
    * @typeparam A2 the new source/input type
    * @param mapFun a function mapping from the new input type A2 to the expected input type A
    */
-  mapInput<A2>(mapFun: MapFun<A2, A>): Collector<A2, R> {
-    return new StateCollector({
+  mapInput<A2>(mapFun: MapFun<A2, Elem>): Op<A2, Res> {
+    return new StateOp({
       ...this.definition,
       nextState: (state, elem, index) => this.nextState(state, mapFun(elem, index), index)
     })
   }
 
-  private withEscape(pred: Pred<S>): StateCollector<A, S, R> {
-    return new StateCollector({ ...this.definition, escape: pred })
+  private withEscape(pred: Pred<St>): StateOp<Elem, St, Res> {
+    return new StateOp({ ...this.definition, escape: pred })
   }
 
   /**
    * Returns a Collector that only processes the initial `amount` values of the input.
    * @param amount the amount of input values to process
    */
-  takeInput(amount: number): Collector<A, R> {
+  takeInput(amount: number): Op<Elem, Res> {
     return this.filterInput((_, index) => index < amount).withEscape((_, index) => index >= amount)
   }
 
@@ -348,7 +316,7 @@ export class StateCollector<A, S, R> {
    * Returns a Collector that skips the initial `amount` values of the input.
    * @param amount the amount of input values to skip
    */
-  dropInput(amount: number): Collector<A, R> {
+  dropInput(amount: number): Op<Elem, Res> {
     return this.filterInput((_, index) => index >= amount)
   }
 
@@ -356,9 +324,9 @@ export class StateCollector<A, S, R> {
    * Returns a Collector that only processes the last `amount` values of the input.
    * @param amount the amount of last input values to process
    */
-  takeLastInput(amount: number): Collector<A, R> {
-    return Collector.createState({
-      init: () => ({ state: this.createInitState(), elems: new Array<A>() }),
+  takeLastInput(amount: number): Op<Elem, Res> {
+    return Op.createState({
+      init: () => ({ state: this.createInitState(), elems: new Array<Elem>() }),
       next: (combinedState, elem) => {
         combinedState.elems.push(elem)
         if (combinedState.elems.length > amount) combinedState.elems.shift()
@@ -381,15 +349,15 @@ export class StateCollector<A, S, R> {
    * Returns a Collector that skips the last `amount` values of the input.
    * @param amount the amount of last input values to skip
    */
-  dropLastInput(amount: number): Collector<A, R> {
-    return Collector.createState({
-      init: () => ({ state: this.createInitState(), elems: new Array<A>(), virtualIndex: 0 }),
+  dropLastInput(amount: number): Op<Elem, Res> {
+    return Op.createState({
+      init: () => ({ state: this.createInitState(), elems: new Array<Elem>(), virtualIndex: 0 }),
       next: (combinedState, elem) => {
         combinedState.elems.push(elem)
         if (combinedState.elems.length > amount) {
           combinedState.state = this.nextState(
             combinedState.state,
-            combinedState.elems.shift() as A,
+            combinedState.elems.shift() as Elem,
             combinedState.virtualIndex++
           )
         }
@@ -407,7 +375,7 @@ export class StateCollector<A, S, R> {
    * @param from the index to start processing elements
    * @param amount the amount of elements to process
    */
-  sliceInput(from: number, amount: number): Collector<A, R> {
+  sliceInput(from: number, amount: number): Op<Elem, Res> {
     return this.dropInput(from).takeInput(from + amount)
   }
 
@@ -415,8 +383,8 @@ export class StateCollector<A, S, R> {
    * Returns a Collector that only processes elements from the input as long as the given `pred` is true. Ignores the rest.
    * @param pred a predicate over the input elements
    */
-  takeWhileInput(pred: Pred<A>): Collector<A, R> {
-    return Collector.createState({
+  takeWhileInput(pred: Pred<Elem>): Op<Elem, Res> {
+    return Op.createState({
       init: () => ({ state: this.createInitState(), done: false }),
       next: (combinedState, elem, index) => {
         if (!combinedState.done) combinedState.done = !pred(elem, index)
@@ -435,8 +403,8 @@ export class StateCollector<A, S, R> {
    * Returns a Collector that skips elements of the input as long as given `pred` is true. Then processes all other elements.
    * @param pred a predicate over the input elements
    */
-  dropWhileInput(pred: Pred<A>): Collector<A, R> {
-    return Collector.createState({
+  dropWhileInput(pred: Pred<Elem>): Op<Elem, Res> {
+    return Op.createState({
       init: () => ({ state: this.createInitState(), done: false, virtualIndex: 0 }),
       next: (combinedState, elem, index) => {
         if (!combinedState.done) combinedState.done = !pred(elem, index)
@@ -460,8 +428,8 @@ export class StateCollector<A, S, R> {
    * @typeparam K the element key type
    * @param keyFun a function taking an input element and its index, and returning a key
    */
-  distinctByInput<K>(keyFun: (value: A, index: number) => K): Collector<A, R> {
-    return Collector.createState({
+  distinctByInput<K>(keyFun: (value: Elem, index: number) => K): Op<Elem, Res> {
+    return Op.createState({
       init: () => ({
         state: this.createInitState(),
         dict: new Set<K>(),
@@ -487,44 +455,46 @@ export class StateCollector<A, S, R> {
   /**
    * Returns a Collector that returns each unique input element at most once.
    */
-  distinctInput(): Collector<A, R> {
+  distinctInput(): Op<Elem, Res> {
     return this.distinctByInput(id)
   }
 
   /**
    * Returns a Collector that only processes those elements that are not equal to their predecessor.
    */
-  filterChangedInput(): Collector<A, R> {
-    return Collector.createState<A, { state: S; prevElem: A | undefined; virtualIndex: number }, R>(
-      {
-        init: () => ({
-          state: this.createInitState(),
-          prevElem: undefined,
-          virtualIndex: 0
-        }),
-        next: (combinedState, elem, index) => {
-          if (elem !== combinedState.prevElem) {
-            combinedState.prevElem = elem
-            combinedState.state = this.nextState(
-              combinedState.state,
-              elem,
-              combinedState.virtualIndex++
-            )
-          }
-          return combinedState
-        },
-        stateToResult: ({ state, virtualIndex }) => this.stateToResult(state, virtualIndex),
-        escape: ({ state, virtualIndex }) =>
-          this.escape !== undefined && this.escape(state, virtualIndex)
-      }
-    )
+  filterChangedInput(): Op<Elem, Res> {
+    return Op.createState<
+      Elem,
+      { state: St; prevElem: Elem | undefined; virtualIndex: number },
+      Res
+    >({
+      init: () => ({
+        state: this.createInitState(),
+        prevElem: undefined,
+        virtualIndex: 0
+      }),
+      next: (combinedState, elem, index) => {
+        if (elem !== combinedState.prevElem) {
+          combinedState.prevElem = elem
+          combinedState.state = this.nextState(
+            combinedState.state,
+            elem,
+            combinedState.virtualIndex++
+          )
+        }
+        return combinedState
+      },
+      stateToResult: ({ state, virtualIndex }) => this.stateToResult(state, virtualIndex),
+      escape: ({ state, virtualIndex }) =>
+        this.escape !== undefined && this.escape(state, virtualIndex)
+    })
   }
 
   /**
    * Returns a Collector that processes each `nth` element of the input elements.
    * @param nth specifies the index of which each element that has a multiple of `nth` will be processed
    */
-  sampleInput(nth: number): Collector<A, R> {
+  sampleInput(nth: number): Op<Elem, Res> {
     return this.filterInput((_, index) => index % nth === 0)
   }
 
@@ -538,12 +508,12 @@ export class StateCollector<A, S, R> {
    * @param amount the maximum amount of times to replace an input element
    */
   patchWhereInput(
-    pred: Pred<A>,
+    pred: Pred<Elem>,
     remove: number,
-    insert?: (elem: A, index: number) => Iterable<A>,
+    insert?: (elem: Elem, index: number) => Iterable<Elem>,
     amount?: number
-  ): Collector<A, R> {
-    return Collector.createState({
+  ): Op<Elem, Res> {
+    return Op.createState({
       init: () => ({
         state: this.createInitState(),
         toRemove: 0,
@@ -595,7 +565,12 @@ export class StateCollector<A, S, R> {
    * @param insert the optional iterable to insert when the element is found
    * @param amount the maximum amount of time to replace an element
    */
-  patchElemInput(elem: A, remove: number, insert?: Iterable<A>, amount?: number): Collector<A, R> {
+  patchElemInput(
+    elem: Elem,
+    remove: number,
+    insert?: Iterable<Elem>,
+    amount?: number
+  ): Op<Elem, Res> {
     return this.patchWhereInput(
       e => e === elem,
       remove,
@@ -608,7 +583,7 @@ export class StateCollector<A, S, R> {
    * Returns a Collector where between each two elements, the given `elem` is added as extra input.
    * @param elem the element to insert between input elements
    */
-  intersperseInput(elem: A): Collector<A, R> {
+  intersperseInput(elem: Elem): Op<Elem, Res> {
     const insert = [elem]
     return this.patchWhereInput((_, i) => i > 0, 0, () => insert)
   }
