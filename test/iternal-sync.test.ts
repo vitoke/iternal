@@ -29,6 +29,7 @@ describe('Iter', () => {
     expectIter(iter.unfold(0, v => [v * 2, v + 1]).take(3))([0, 2, 4])
     expectIter(iter.fromLazy(() => 1))([1])
     expectIter(iter.nats.take(3))([0, 1, 2])
+    expectIter(iter.range(0, 0))([])
     expectIter(iter.range(0, 6, 2))([0, 2, 4])
     expectIter(iter.range(6, 0, -2))([6, 4, 2])
     expectIter(iter.range(0.0, 0.5, 0.2))([0.0, 0.2, 0.4])

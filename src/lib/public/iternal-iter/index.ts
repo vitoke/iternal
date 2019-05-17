@@ -1556,6 +1556,11 @@ export namespace iter {
    * ```
    */
   export function range(from: number, until?: number, step = 1): Iter<number> {
+    if (until !== undefined) {
+      if (step >= 0 && from >= until) return iter.empty()
+      if (step <= 0 && from <= until) return iter.empty()
+    }
+
     return generate(from, v => {
       const next = v + step
 
