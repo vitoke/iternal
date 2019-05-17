@@ -1,6 +1,6 @@
 {
   "name": "iternal",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Provides a powerful API for native ES6 iterables and async iterables",
   "keywords": [
     "iterable",
